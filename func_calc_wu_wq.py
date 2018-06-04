@@ -59,7 +59,7 @@ def calc_wq(delta_q, model_names, sigmaD2 = 0.6):
 def calc_weights_approx(wu, wq, model_names, data, var_file = None):
     if (type(data) == dict()):
         if model_names != data.keys():
-            print 'Warning: models in list and dict not the same'
+            print('Warning: models in list and dict not the same')
     if (len(wq) == len(model_names)):
         w_prod = np.empty((len(wq)))
         w_prod.fill(np.NaN)
@@ -151,5 +151,5 @@ def calc_weights_approx(wu, wq, model_names, data, var_file = None):
                             approx[u, q, j] = np.nansum(tmp, axis = 0)
                     del tmp
                     weights[u, q, j, :] = tmpw
-                    
+
     return {'weights':weights, 'approx':approx}
