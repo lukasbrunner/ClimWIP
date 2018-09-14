@@ -1,0 +1,1 @@
+../areas_txt/EUR.txt
