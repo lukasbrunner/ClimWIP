@@ -2,11 +2,12 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-09-14 12:25:50 lukas>
+Time-stamp: <2018-09-19 15:39:32 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
 Authors:
+- Ruth Lorenz || ruth.lorenz@env.ethz.ch
 - Lukas Brunner || lukas.brunner@env.ethz.ch
 
 Abstract:
@@ -25,11 +26,8 @@ from utils_python.run_parallel import run_parallel
 from utils_python.get_filenames import Filenames
 
 from functions.diagnostics import calc_diag, calc_CORR, calc_Rnet
-from functions.percentile import calc_inpercentile_mp
-from functions.weights import (calc_wu,
-                               calc_wq,
-                               calc_weights_approx,
-                               calc_weights_approx_multiple_sigmas)
+from functions.percentile import calculate_optimal_sigma
+from functions.weights import calculate_weights_sigmas, calculate_weights
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +127,6 @@ def set_up_filenames(cfg):
         base_path=cfg.data_path)
 
     fn.apply_filter(varn=varns, freq=cfg.freq, scenario=cfg.scenario)  # restrict by variable and scenario
-
     models = fn.get_variable_values(
         'model', subset={'varn': varns, 'scenario': cfg.scenario})
     # DEBUG, TODO: exclude EC-EARTH for now
@@ -138,7 +135,7 @@ def set_up_filenames(cfg):
         fn.apply_filter(model=models)
 
     # DEBUG: remove most models to speed up
-    models = models[:5]
+    models = models[:7]
     fn.apply_filter(model=models)
 
     logger.info('Number of models included in analysis is: %s' %(len(models)))
@@ -205,8 +202,11 @@ def calc_target(fn, cfg):
 
 
 def calc_predictors(fn, cfg):
-    """TODO: docstring"""
+    """Calculate the predictor diagnostics for each model.
+    TODO: docstring"""
 
+    # TODO: do this with the utils.weighted_mean function?!
+    # like this: np.sqrt(utils.weighted_mean((data1-data2)**2, lat))
     def rmse_weighted(data1, data2, lat):
         # basic tests
         if len(data1.shape) == 2:
@@ -307,11 +307,12 @@ def calc_predictors(fn, cfg):
         rmse_models = np.empty((len(diagnostics), len(diagnostics)),
                             dtype=float) * np.nan
 
-        # TODO: I can save the bottom half of calculations in this matrix
         for ii, diagnostic1 in enumerate(diagnostics):
             for jj, diagnostic2 in enumerate(diagnostics):
                 if ii == jj:
                     rmse_models[ii, ii] = 0.0
+                elif ii > jj:  # the matrix is symmetric
+                    rmse_models[ii, jj] = rmse_models[jj, ii]
                 else:
                     rmse_models[ii, jj] = rmse_weighted(diagnostic1, diagnostic2, lat)
 
@@ -320,7 +321,7 @@ def calc_predictors(fn, cfg):
             logger.info('Reading obs data and calculating perfmetric')
 
             # TODO
-            filename_obs = '%s%s_%s_%s_%s-%s_%sMEAN_%s_%s.nc' %(
+            filename_obs = '%s%s_%s_%s_%s-%s_%s_%s_%s.nc' %(
                 diagdir[diag], diag, cfg.freq, cfg.obsdata, cfg.syear_eval[i],
                 cfg.eyear_eval[i], row['res_name'], row['var_file'], cfg.region)
             if not (os.path.isfile(filename_obs)):
@@ -347,24 +348,29 @@ def calc_predictors(fn, cfg):
             for i_diag, diagnostic in enumerate(diagnostics):
                 rmse_obs[i_diat] = rmse_weighted(diagnostic, obs, lat)
 
+
             rmse = np.concatenate((rmse_models, rmse_obs), axis=0)
         else:
             rmse = rmse_models
-        rmse_all.append(rmse)  # NOTE: never needed?
+
+        rmse_all.append(rmse)
 
         # normalize deltas by median
-        # NOTE: what is the difference between delta_q and delta_u?
         med = np.nanmedian(rmse)
         d_delta_u.append(np.divide(rmse_models, med))
         if cfg.obsdata:
+            # NOTE: is this really the right way to normalize this??
             d_delta_q.append(np.divide(rmse_obs, med))
-        else:
-            d_delta_q.append(np.divide(rmse_models, med))
+        # TODO: maybe we want to do this:
+        # map the values of d_delta from [d_delta.min(), d_delta.max()] to [0, 1]
+        # rmse_models = np.interp(rmse_models, [rmse_models.min(), rmse_models.max()], [0, 1])
 
-    d_delta_u, d_delta_q = np.array(d_delta_u), np.array(d_delta_q)
-
-    delta_q = d_delta_q.mean(axis=0)
-    delta_u = d_delta_u.mean(axis=0)
+    if cfg.obsdata:
+        d_delta_u, d_delta_q = np.array(d_delta_u), np.array(d_delta_q)
+        delta_u, delta_q = d_delta_u.mean(axis=0), d_delta_q.mean(axis=0)
+    else:  # if there are not observations delta_u and delta_q are identical!
+         delta_u = np.array(d_delta_u).mean(axis=0)
+         delta_q = delta_u# .mean(axis=0)  # DEBUG: .mean(axis=0) is not in Ruths script
 
     if (log_model_ens[0] != log_model_ens[1] or
         log_model_ens[0] != log_model_ens[2]):
@@ -372,68 +378,33 @@ def calc_predictors(fn, cfg):
 
     return delta_q, delta_u, lat, lon
 
-def calc_sigmas(targets, delta_u, lat, lon, fn, cfg):
-    ###
-    # If sigmas not given as fixed values, determine optimal sigmas first
-    ###
+def calc_sigmas(targets, delta_u, lat, lon, fn, cfg, debug=False):
+    """TODO: docsting"""
 
-    # TODO: how to set this?
+    targets = targets.squeeze()
+
     sigma_size = 41
     tmp = np.mean(delta_u)
+    sigmas_q = np.linspace(.1*tmp, 1.9*tmp, sigma_size)
+    sigmas_u = np.linspace(.1*tmp, 1.9*tmp, sigma_size)
 
-    sigma_s = np.linspace(tmp - 0.9 * tmp, tmp + 0.9 * tmp, sigma_size)
-    sigma_d = np.linspace(tmp - 0.9 * tmp, tmp + 0.9 * tmp, sigma_size)
-
-    # I'm not sure this is necessary
-    # It might be faster because we avoid handling the same model twice
-    # But wouldn't it be more elegant to just let 'wu' downweight
-    # ensembles of the same model?
-    model_ens_all, _ = get_filenames(fn, cfg.target_diagnostic, True)
-    model_ens_1ens, _ = get_filenames(fn, cfg.target_diagnostic, False)
-    idx = np.array([np.where(ens == np.array(model_ens_all))[0][0]
-                    for ens in model_ens_1ens])
-    # TODO: also use list here?! -> are we really sure we get the right indices?
+    _, idx = np.unique(fn.indices['model'], return_index=True)  # index of unique models
     targets_1ens = targets[idx]
     delta_u_1ens = delta_u[idx, :][:, idx]
-
-    # area average of data
     targets_1ens_mean = utils.area_weighted_mean(targets_1ens, lat, lon)
 
-    wu = calc_wu(delta_u_1ens, sigma_s)
-    wq = calc_wq(delta_u_1ens, sigma_d)
+    weights_sigmas, means_sigmas = calculate_weights_sigmas(
+        targets_1ens_mean, delta_u_1ens, sigmas_q, sigmas_u)
 
-    weights_iperc, weighted_mmm_iperc = calc_weights_approx_multiple_sigmas(
-        wu, wq, targets_1ens, std=(cfg.target_agg=='STD'))
+    if debug:
+        return weights_sigmas
 
-    # to run in parallel, weights_iperc needs to be list
-    # for all sigma combinations, weights per model
-    weights_resh = np.reshape(weights_iperc, (weights_iperc.shape[0] *
-                                              weights_iperc.shape[1],
-                                              weights_iperc.shape[2],
-                                              weights_iperc.shape[3]))
-    weights_iperc_list = list(weights_resh)
+    idx_u, idx_q = calculate_optimal_sigma(means_sigmas, targets_1ens_mean)
 
-    test_perc = run_parallel(calc_inpercentile_mp, weights_iperc_list,
-                             args=(targets_1ens_mean,), nr=1,
-                             sort=True)
+    import ipdb; ipdb.set_trace()
 
-    test_perc_ar = np.reshape(test_perc, (weights_iperc.shape[0],
-                                          weights_iperc.shape[1]))
-    # find smallest sigma values within 90%, 80% of time, test_perc[s2, d2]
-    ind8 = np.empty((len(cfg.sigma_S2))) * np.nan
-    for s2 in range(len(cfg.sigma_S2)):
-        ind8[s2] = np.where(test_perc_ar[s2, :] >= 0.8)[0][0]
-    indmin = np.min(ind8)
-    s2 = int(next(x[0] for x in enumerate(ind8) if x[1] == indmin))
-    d2 = int(np.min(ind8) - 1)
-    sigma_S2_end = cfg.sigma_s[s2]
-    sigma_D2_end = cfg.sigma_d[d2]
-    cfg.sigma_S2 = round(sigma_S2_end, 2)
-    cfg.sigma_D2 = round(sigma_D2_end, 2)
-    logger.info('Optimal sigmas are %s and %s' %(
-        str(cfg.sigma_S2), str(cfg.sigma_D2)))
-
-    return target_data_ar
+    # cfg.sigma_S2 =
+    # cfg.sigma_D2 =
 
 
 def calc_weights(delta_u, delta_q, target_data_ar, runs, cfg):
