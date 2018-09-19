@@ -1,1 +1,1 @@
-These tests compare the output of the latest version of model_weighting to the original versions (i.e., before the rework) output. The files to compare to have been calculted and saved on xx.xx.2018.
+These tests compare the output of the latest version of model_weighting to the original versions (i.e., before the rework) output. The files to compare to have been calculted and saved on 17.09.2018. They are based on the configtemplate.py configuration and on code with git revison hash 46c1001.
