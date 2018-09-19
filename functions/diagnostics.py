@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-09-14 12:34:53 lukas>
+Time-stamp: <2018-09-17 11:55:41 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -116,9 +116,10 @@ def calc_diag(infile,
     str (filename of saved file)
     """
     filename_global = '{}_{}-{}_{}_GLOBAL.nc'.format(outname, syear, eyear, season)  # TODO: needed?
-    filename_global_kind = '{}_{}-{}_{}MEAN_{}_GLOBAL.nc'.format(outname, syear, eyear, season, kind)
+    filename_global_kind = '{}_{}-{}_{}_{}_GLOBAL.nc'.format(outname, syear, eyear, season, kind)
     filename_region = '{}_{}-{}_{}_{}.nc'.format(outname, syear, eyear, season, region)
-    filename_region_kind = '{}_{}-{}_{}MEAN_{}_{}.nc'.format(outname, syear, eyear, season, kind, region)
+    filename_region_kind = '{}_{}-{}_{}_{}_{}.nc'.format(outname, syear, eyear, season, kind, region)
+
     if not overwrite and (os.path.isfile(filename_global) and
                           os.path.isfile(filename_global_kind) and
                           os.path.isfile(filename_region) and
@@ -217,17 +218,21 @@ def calc_diag(infile,
         os.remove(tmpfile)  # remove to not make stupid mistakes
         os.remove(tmpfile2)  # remove to not make stupid mistakes
 
+        # NOTE: is this an inconsistency?
+        # - Climatology is aggregated as time mean of annual mean (in the case of 'ANN')
+        # - Standard deviation is aggregated directly from the data
+        # -> STD is NOT the standard deviation from CLIM!
         if kind == 'CLIM' and season == 'ANN':
-            cdo.yearmean(input=filename_global, output=tmpfile)  # save output
+            cdo.yearmean(input=filename_global, output=tmpfile)
             cdo.timmean(input=tmpfile2, output=filename_global_kind)  # save output
         elif kind == 'CLIM':
-            cdo.seasmean(input=filename_global, output=tmpfile)  # save output
+            cdo.seasmean(input=filename_global, output=tmpfile)
             cdo.yseasmean(input=tmpfile, output=filename_global_kind)  # save output
         elif kind == 'STD':
             cdo.detrend(input=filename_global, output=tmpfile)
-            cdo.timstd(input=tmpfile, output=filename_global_kind)
+            cdo.timstd(input=tmpfile, output=filename_global_kind) # save output
         elif kind == 'TREND':
-            cdo.regres(input=filename_global, output=filename_global_kind)
+            cdo.regres(input=filename_global, output=filename_global_kind) # save output
 
         if region != 'GLOBAL':
             mask = np.loadtxt('%s/%s.txt' %(REGION_DIR, region))
@@ -295,8 +300,8 @@ def calc_CORR(infile,
         os.path.basename(infile).replace('clt', 'tasclt'))  # TODO, DEBUG !!! remove hardcoded stuff!
     outname = outname.replace('.nc', '')
 
-    filename_global_kind = '{}_{}-{}_{}MEAN_CORR_GLOBAL.nc'.format(outname, syear, eyear, season)
-    filename_region_kind = '{}_{}-{}_{}MEAN_CORR_{}.nc'.format(outname, syear, eyear, season, region)
+    filename_global_kind = '{}_{}-{}_{}_CORR_GLOBAL.nc'.format(outname, syear, eyear, season)
+    filename_region_kind = '{}_{}-{}_{}_CORR_{}.nc'.format(outname, syear, eyear, season, region)
     if not overwrite and (os.path.isfile(filename_global_kind) and
                           os.path.isfile(filename_region_kind)):
         if region == 'GLOBAL':
