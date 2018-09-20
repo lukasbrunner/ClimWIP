@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-09-19 15:39:32 lukbrunn>
+Time-stamp: <2018-09-20 19:51:05 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -129,13 +129,14 @@ def set_up_filenames(cfg):
     fn.apply_filter(varn=varns, freq=cfg.freq, scenario=cfg.scenario)  # restrict by variable and scenario
     models = fn.get_variable_values(
         'model', subset={'varn': varns, 'scenario': cfg.scenario})
+
     # DEBUG, TODO: exclude EC-EARTH for now
     if 'EC-EARTH' in models:
         models.remove('EC-EARTH')
         fn.apply_filter(model=models)
 
     # DEBUG: remove most models to speed up
-    models = models[:7]
+    # models = models[:7]
     fn.apply_filter(model=models)
 
     logger.info('Number of models included in analysis is: %s' %(len(models)))
@@ -216,16 +217,17 @@ def calc_predictors(fn, cfg):
             errmsg = 'Shape of data1 needs to be (N, M) or (L, M, N) and not {}'.format(
                 data1.shape)
             logger.error(errmsg)
-            raise ValueError
+            raise ValueError(errmsg)
         if data1.shape[1] != len(lat):
             errmsg = 'Shape of data1 does not fit given lat: {}!=(*, {}, *)'.format(
                 data1.shape, len(lat))
             logger.error(errmsg)
-            raise ValueError
+            raise ValueError(errmsg)
         if data1.shape != data2.shape:
-            errmsg = 'Shapes of data1 and data2 do not fit: {}!={}'.format(data1.shape, data2.shape)
+            errmsg = 'Shapes of data1 and data2 do not fit: {}!={}'.format(
+                data1.shape, data2.shape)
             logger.error(errmsg)
-            raise ValueError
+            raise ValueError(errmsg)
 
         w_lat = np.cos(np.radians(lat))
         weights = np.tile(w_lat, (data1.shape[0], data1.shape[2], 1)).swapaxes(1, 2)
@@ -347,12 +349,9 @@ def calc_predictors(fn, cfg):
             rmse_obs = np.empty(len(diagnostics)) * np.nan
             for i_diag, diagnostic in enumerate(diagnostics):
                 rmse_obs[i_diat] = rmse_weighted(diagnostic, obs, lat)
-
-
             rmse = np.concatenate((rmse_models, rmse_obs), axis=0)
         else:
             rmse = rmse_models
-
         rmse_all.append(rmse)
 
         # normalize deltas by median
@@ -378,7 +377,8 @@ def calc_predictors(fn, cfg):
 
     return delta_q, delta_u, lat, lon
 
-def calc_sigmas(targets, delta_u, lat, lon, fn, cfg, debug=False):
+
+def calc_sigmas(targets, delta_i, lat, lon, fn, cfg, debug=False):
     """TODO: docsting"""
 
     targets = targets.squeeze()
@@ -386,95 +386,42 @@ def calc_sigmas(targets, delta_u, lat, lon, fn, cfg, debug=False):
     sigma_size = 41
     tmp = np.mean(delta_u)
     sigmas_q = np.linspace(.1*tmp, 1.9*tmp, sigma_size)
-    sigmas_u = np.linspace(.1*tmp, 1.9*tmp, sigma_size)
+    sigmas_i = np.linspace(.1*tmp, 1.9*tmp, sigma_size)
 
-    _, idx = np.unique(fn.indices['model'], return_index=True)  # index of unique models
+    models = np.array(fn.get_filenames(subset={'varn': cfg.target_diagnostic},
+                                       return_filters='model')).swapaxes(0, 1)[0]  # index of unique models
+    _, idx = np.unique(models, return_index=True)
     targets_1ens = targets[idx]
-    delta_u_1ens = delta_u[idx, :][:, idx]
+    delta_i_1ens = delta_i[idx, :][:, idx]
     targets_1ens_mean = utils.area_weighted_mean(targets_1ens, lat, lon)
 
-    weights_sigmas, means_sigmas = calculate_weights_sigmas(
-        targets_1ens_mean, delta_u_1ens, sigmas_q, sigmas_u)
+    weights_sigmas = calculate_weights_sigmas(
+        targets_1ens_mean, delta_i_1ens, sigmas_q, sigmas_i)
 
     if debug:
         return weights_sigmas
 
-    idx_u, idx_q = calculate_optimal_sigma(means_sigmas, targets_1ens_mean)
+    # DEBUG: remove inside_ratio
+    # NOTE: this is only correct if sigmas_q == sigmas_i!!
+    idx_q, idx_i, inside_ratio = calculate_optimal_sigma(targets_1ens_mean, weights_sigmas)
 
-    import ipdb; ipdb.set_trace()
+    # DEBUG: I could not yet reproduce this result!!
+    cfg.sigma_i = sigmas_i[idx_i]
+    cfg.sigma_q = sigmas_q[idx_q]
 
-    # cfg.sigma_S2 =
-    # cfg.sigma_D2 =
 
-
-def calc_weights(delta_u, delta_q, target_data_ar, runs, cfg):
-    logger.info('Calculate weights for model uniqueness (u) and quality (q)')
-    wu_end = calc_wu(delta_u, cfg.sigma_S2)
+def calc_weights(delta_i, delta_q, cfg):
+    """TODO: docstring"""
 
     if cfg.obsdata:
-        wq_end = calc_wq(delta_q, cfg.sigma_D2)
-
-        # calculate weights and weighted multi-model mean
-        weights, weighted_mmm = calc_weights_approx(wu_end, wq_end,
-                                                    target_data_ar,
-                                                    std = (cfg.target_file=='STD'))
-        logger.info('Calculated weights are %s for models %s' %(
-            str(weights), str(model_names)))
-        sum_weights = np.sum(weights)
-        logger.debug('Sum of all weights is %s' %(round(sum_weights, 3)))
+        return calculate_weights(delta_q, delta_i, cfg.sigma_q, cfg.sigma_i)
     else:
-        # do perfect model test for all models as truth if no obs given
-        logger.info('Performing perfect model test and calculating weights')
-        weights = dict()
-        weighted_mmm = dict()
-        for i, run in enumerate(runs):
-            wq_end = calc_wq(delta_q[i, ], cfg.sigma_D2)
-            # calculate weights and weighted multi-model mean
-            tmp_weights, tmp_weighted_mmm = calc_weights_approx(wu_end,
-                                                                wq_end,
-                                                                target_data_ar,
-                                                                std = (cfg.target_file=='STD'))
-            weights[run] = tmp_weights # np.array shape[len(runs)]
-            weighted_mmm[run] = tmp_weighted_mmm
-
-    return weights, weighted_mmm
+        raise NotImplementedError
 
 
 def save_data(weights, weighted_mmm, cfg):
-    # put data into dict to save to json
-    d_weights = dict()
-    if cfg.obsdata:
-        for mod in range(len(model_names)):
-            d_weights[model_names[mod]] = weights[mod]
-        d_weights['weighted multi-model-mean'] = weighted_mmm.tolist()
-    else:
-        for runname in model_names:
-            d_weights1 = dict()
-            for mod in range(len(model_names)):
-                d_weights1[model_names[mod]] = weights[runname][mod]
-            d_weights[runname] = d_weights1
-            del d_weights1
-            d_weights[runname]['weighted multi-model-mean'] = weighted_mmm[runname].tolist()
-
-    # create string with all diagnostics names for output filename
-    pred_str = ''
-    for i, row in cfg.predictors.iterrows():
-        tmp_str = ''.join([row['diag_var'], row['var_file'], '_'])
-        pred_str += tmp_str
-
-    # define path, filename and save data
-    outdir_file = '%smodel_weights/%s/%s/%s/%s/%s/' %(
-        cfg.outdir, cfg.target_var, cfg.target_file, cfg.target_mask, cfg.target_res, cfg.region)
-    if (os.access(outdir_file, os.F_OK) == False):
-        os.makedirs(outdir_file)
-
-    outfile = '%s%s%s_sigmaS%s_sigmaD%s_%s_%s_%s-%s.txt' %(
-        outdir_file, pred_str, len(cfg.predictors.diag_var), cfg.sigma_S2, cfg.sigma_D2,
-        cfg.obsdata, cfg.region, cfg.syear_fut, cfg.eyear_fut)
-    logger.info('Save data to json %s' %(outfile))
-    with open(outfile, "w") as text_file:
-        json.dump(d_weights, text_file)
-
+    """TODO: docstring"""
+    raise NotImplementedError
 
 
 def main():
@@ -499,10 +446,11 @@ def main():
 
     if cfg.sigma_type == "inpercentile":
         logger.info('Calculate sigmas...')
-        target_data_ar = calc_sigmas(targets, delta_u, lat, lon, fn, cfg)
+        weights = calc_sigmas(targets, delta_u, lat, lon, fn, cfg)
         logger.info('Calculate sigmas... DONE')
     elif cfg.sigma_type == 'manual':
-        logger.info('Using user sigmas: {}, {}'.format(cfg.sigma_S2, cfg.sigma_D2))
+        logger.info('Using user sigmas: {}, {}'.format(cfg.sigma_i, cfg.sigma_q))
+
     else:
         errmsg = ' '.join(['simga_type has to be one of [interpercentile |',
                            'manual] not {}'.format(cfg.sigma_type)])
@@ -510,7 +458,9 @@ def main():
         raise NotImplementedError(errmsg)
 
     logger.info('Calculate weights and weighted mean...')
-    calc_weights(delta_u, delta_q, target_data_ar, runs, cfg)
+    weights = calc_weights(delta_u, delta_q, cfg)
+    # mean = np.ma.average(np.ma.masked_invalid(targets),
+    #                      weights=weights, axis=0).filled_invalid(np.nan)
     logger.info('Calculate weights and weighted mean... DONE')
 
     logger.info('Saving data...')

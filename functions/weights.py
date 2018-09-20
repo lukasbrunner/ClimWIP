@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-09-19 12:57:53 lukbrunn>
+Time-stamp: <2018-09-20 19:52:48 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -17,6 +17,7 @@ import logging
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
 
 def calculate_weights(quality, independence, sigma_q, sigma_i):
     """Calculates the weights for each model N.
@@ -39,6 +40,7 @@ def calculate_weights(quality, independence, sigma_q, sigma_i):
         errmsg = 'quality and independence need have the same length'
         logger.error(errmsg)
         raise IOError(errmsg)
+
     numerator = np.exp(-((quality/sigma_q)**2))
 
     exp = np.exp(-((independence/sigma_i)**2))
@@ -61,7 +63,7 @@ def calculate_weights_sigmas(data, distances, sigmas_q, sigmas_i):
       weighting function of the independence.
 
     Returns:
-    weights (M, L, N), weighted_mean (M, L,...)"""
+    weights (M, L, N)"""
     if len(distances.shape) != 2:
         errmsg = 'distances needs to be a 2D array'
         logger.error(errmsg)
@@ -76,16 +78,12 @@ def calculate_weights_sigmas(data, distances, sigmas_q, sigmas_i):
         raise IOError(errmsg)
 
     weights = np.empty((len(sigmas_q), len(sigmas_i)) + distances.shape) * np.nan
-    mean = np.empty((len(sigmas_q), len(sigmas_i), distances.shape[0])) * np.nan
     for idx_q, sigma_q in enumerate(sigmas_q):
         for idx_i, sigma_i in enumerate(sigmas_i):
             for idx_d, dd in enumerate(distances):
                 # dd is the distance of each model to the idx_d-th model (='Truth')
                 ww = calculate_weights(dd, distances, sigma_q, sigma_i)
-                # exclude the 'True' model by setting the weight to zero
-                ww[idx_d] = 0.
+                ww[idx_d] = 0.  # exclude the 'True' model
                 ww /= ww.sum()  # DEBUG: normalize just to be comparable with old script
-                mean[idx_q, idx_i, idx_d] = np.average(data, weights=ww, axis=0)
                 weights[idx_q, idx_i, idx_d] = ww
-
-    return weights, mean
+    return weights
