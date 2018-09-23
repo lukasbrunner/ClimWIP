@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-09-20 19:20:07 lukbrunn>
+Time-stamp: <2018-09-21 15:56:50 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -60,7 +60,7 @@ def calculate_optimal_sigma(data, weights_sigmas, perc_lower=.1, perc_upper=.9):
                 assert weights_sigmas[ii, jj, kk, kk] == 0.  # CHECK
                 pp1, pp2 = weighted_quantile(data, (perc_lower, perc_upper),
                                                weights_sigmas[ii, jj, kk])
-                inside[kk] = (data[kk] >= pp1) & (data[kk] <= pp2)
+                inside[kk] = (pp1 <= data[kk] <= pp2)
             inside_ratio[ii, jj] = inside.sum() / float(len(inside))
     inside_ok = inside_ratio >= interpercentile
 

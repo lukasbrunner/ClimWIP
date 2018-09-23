@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-09-20 19:51:05 lukbrunn>
+Time-stamp: <2018-09-23 13:30:55 lukas>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -11,21 +11,35 @@ Authors:
 - Lukas Brunner || lukas.brunner@env.ethz.ch
 
 Abstract:
+Main script of the model weighting scheme described by Ruth et al.
+2018 and Knutti et al. 2017. Reads a configuration file (default:
+./configs/config.ini) and calculates target and predictor diagnostics. Target
+diagnostics are used for a perfect model test, predictors for calculating the
+weighting functions. Returns a combined quality-independence weight for each
+included model.
 
+References:
+Knutti, R., J. Sedláček, B. M. Sanderson, R. Lorenz, E. M. Fischer, and
+V. Eyring (2017), A climate model projection weighting scheme accounting
+for performance and interdependence, Geophys. Res. Lett., 44, 1909–1918,
+ doi:10.1002/2016GL072012.
+
+Lorenz, R., Herger, N., Sedláˇcek, J., Eyring, V., Fischer, E. M., and
+Knutti, R. (2018). Prospects and caveats of weighting climate models for
+summer maximum temperature projections over North America. Journal of
+Geophysical Research: Atmospheres, 123, 4509–4526. doi:10.1029/2017JD027992.
 """
 import os
-import json
 import logging
 import argparse
 import numpy as np
 import netCDF4 as nc
-import multiprocessing as mp
 
 import utils_python.utils as utils
-from utils_python.run_parallel import run_parallel
+from utils_python.physics import area_weighted_mean
 from utils_python.get_filenames import Filenames
 
-from functions.diagnostics import calc_diag, calc_CORR, calc_Rnet
+from functions.diagnostics import calc_diag, calc_CORR
 from functions.percentile import calculate_optimal_sigma
 from functions.weights import calculate_weights_sigmas, calculate_weights
 
@@ -47,7 +61,7 @@ def read_config():
         formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
         dest='config', nargs='?', default='DEFAULT',
-        help='Name of the configuration to use.')
+        help='Name of the configuration to use (optional).')
     parser.add_argument(
         '--filename', '-f', dest='filename', default='configs/config.ini',
         help='Relative or absolute path/filename.ini of the config file.')
@@ -63,8 +77,8 @@ def get_filenames(fn, varn, all_members=True):
     Parameters:
     - fn (class): Filename class
     - varn (str): A valid variable name
-    - all_members=True (bool, optional): True: include all available ensemble members
-      per model. False: include only one (the first) member
+    - all_members=True (bool, optional): If True include all available ensemble
+      members per model. If False include only one (the first) member.
 
     Returns:
     tuple, tuple (identifiers, filenames)"""
@@ -73,8 +87,7 @@ def get_filenames(fn, varn, all_members=True):
     for model in fn.get_variable_values('model'):
         for scenario in fn.get_variable_values('scenario'):
             ensembles = fn.get_variable_values(
-                'ensemble',
-                subset={'scenario': scenario, 'model': model})
+                'ensemble', subset={'scenario': scenario, 'model': model})
             if not all_members:
                 ensembles = ensembles[:1]
             for ensemble in ensembles:
@@ -84,23 +97,29 @@ def get_filenames(fn, varn, all_members=True):
                             'model': model,
                             'scenario': scenario,
                             'ensemble': ensemble})
-                if len(ff) != 1:
-                    raise ValueError('This should be one!!')
+                assert len(ff) == 1, 'len(ff) should be one!'
                 filenames += (ff[0],)
 
-    logger.info('Number of included runs is {}'.format(len(filenames)))
-    logger.debug('Included runs: {}'.format(', '.join(map(str, model_ens))))
-    return model_ens, filenames
+    logger.info('{} files found.'.format(len(filenames)))
+    logger.debug(', '.join(map(str, model_ens)))
+    return filenames
 
 
 def set_up_filenames(cfg):
     """Sets up the Filenames object. Adds basic variables to create derived
-    diagnostics to the list."""
+    diagnostics to the list.
+
+    Parameters:
+    cfg (config object)
+
+    Returns:
+    filename object
+    """
 
     varns = set([cfg.target_diagnostic] + cfg.predictor_diagnostics)
 
     # remove derived variables from original list and add base variables
-    if 'tasclt' in varns:  # TODO: this also needs 'tas' right???
+    if 'tasclt' in varns:  # DEBUG: this also needs 'tas' right???
         varns.remove('tasclt')
         varns.add('clt')
     if 'rnet' in varns:
@@ -125,23 +144,20 @@ def set_up_filenames(cfg):
     fn = Filenames(
         file_pattern='{varn}/{varn}_{freq}_{model}_{scenario}_{ensemble}_g025.nc',
         base_path=cfg.data_path)
+    fn.apply_filter(varn=varns, freq=cfg.freq, scenario=cfg.scenario)
+    models = fn.get_variable_values('model')
 
-    fn.apply_filter(varn=varns, freq=cfg.freq, scenario=cfg.scenario)  # restrict by variable and scenario
-    models = fn.get_variable_values(
-        'model', subset={'varn': varns, 'scenario': cfg.scenario})
-
-    # DEBUG, TODO: exclude EC-EARTH for now
+    # DEBUG: exclude EC-EARTH for now
     if 'EC-EARTH' in models:
         models.remove('EC-EARTH')
         fn.apply_filter(model=models)
 
     # DEBUG: remove most models to speed up
     # models = models[:7]
-    fn.apply_filter(model=models)
+    # fn.apply_filter(model=models)
 
-    logger.info('Number of models included in analysis is: %s' %(len(models)))
-    logger.debug('Models included in analysis are: %s' %(models))
-
+    logger.info('{} models included in analysis'.format(len(models)))
+    logger.debug('Models included in analysis: {}'.format(', '.join(models)))
     return fn
 
 
@@ -161,14 +177,14 @@ def calc_target(fn, cfg):
     os.makedirs(base_path, exist_ok=True)
 
     targets = []
-    for model_ens, filename in zip(*get_filenames(
-            fn, cfg.target_diagnostic, all_members=cfg.ensembles)):
+    for filename in get_filenames(fn, cfg.target_diagnostic, cfg.ensembles):
         logger.debug('Calculate diagnostics for file {}...'.format(filename))
-        # create template for output files
         filename_template = os.path.join(base_path, os.path.basename(filename))
         filename_template = filename_template.replace('.nc', '')
 
-        filename_diag = calc_diag(filename, filename_template, cfg.target_diagnostic,
+        filename_diag = calc_diag(infile=filename,
+                                  outname=filename_template,
+                                  diagnostic=cfg.target_diagnostic,
                                   masko=cfg.target_masko,
                                   syear=cfg.syear_fut,  # future
                                   eyear=cfg.eyear_fut,
@@ -177,12 +193,14 @@ def calc_target(fn, cfg):
                                   region=cfg.region,
                                   overwrite=cfg.overwrite)
 
-        fh = nc.Dataset(filename_diag, mode = 'r')
-        target = fh.variables[cfg.target_diagnostic][:] # time, lat, lon data
+        fh = nc.Dataset(filename_diag, mode='r')
+        target = fh.variables[cfg.target_diagnostic][:]  # time, lat, lon
         fh.close()
 
         if cfg.target_type == 'change':
-            filename_diag = calc_diag(filename, filename_template, cfg.target_diagnostic,
+            filename_diag = calc_diag(infile=filename,
+                                      outname=filename_template,
+                                      diagnostic=cfg.target_diagnostic,
                                       masko=cfg.target_masko,
                                       syear=cfg.syear_hist,  # historical
                                       eyear=cfg.eyear_hist,
@@ -191,59 +209,38 @@ def calc_target(fn, cfg):
                                       region=cfg.region,
                                       overwrite=cfg.overwrite)
 
-            fh = nc.Dataset(filename_diag, mode = 'r')
-            target_hist = fh.variables[cfg.target_diagnostic][:] # time, lat, lon data
+            fh = nc.Dataset(filename_diag, mode='r')
+            target_hist = fh.variables[cfg.target_diagnostic][:]  # time, lat, lon
             fh.close()
             target -= target_hist
 
         targets.append(np.ma.filled(target, fill_value=np.nan))
         logger.debug('Calculate diagnostics for file {}... DONE'.format(filename))
-
     return np.array(targets)
 
 
 def calc_predictors(fn, cfg):
-    """Calculate the predictor diagnostics for each model.
-    TODO: docstring"""
+    """Calculate the predictor diagnostics for each model and the distance
+    between each diagnostic and the observations (quality - delta_q) as well
+    as the distance between the diagnostics of each model (independence -
+    delta_i).
 
-    # TODO: do this with the utils.weighted_mean function?!
-    # like this: np.sqrt(utils.weighted_mean((data1-data2)**2, lat))
-    def rmse_weighted(data1, data2, lat):
-        # basic tests
-        if len(data1.shape) == 2:
-            data1 = data1.reshape(1, *data1.shape)
-            data2 = data2.reshape(1, *data2.shape)
-        elif len(data1.shape) != 3:
-            errmsg = 'Shape of data1 needs to be (N, M) or (L, M, N) and not {}'.format(
-                data1.shape)
-            logger.error(errmsg)
-            raise ValueError(errmsg)
-        if data1.shape[1] != len(lat):
-            errmsg = 'Shape of data1 does not fit given lat: {}!=(*, {}, *)'.format(
-                data1.shape, len(lat))
-            logger.error(errmsg)
-            raise ValueError(errmsg)
-        if data1.shape != data2.shape:
-            errmsg = 'Shapes of data1 and data2 do not fit: {}!={}'.format(
-                data1.shape, data2.shape)
-            logger.error(errmsg)
-            raise ValueError(errmsg)
+    Parameters:
+    - fn (Filename object):
+    - cfg (config object):
 
-        w_lat = np.cos(np.radians(lat))
-        weights = np.tile(w_lat, (data1.shape[0], data1.shape[2], 1)).swapaxes(1, 2)
-        data1, data2 = np.ma.masked_invalid(data1), np.ma.masked_invalid(data2)
-        return np.sqrt(np.ma.average((data1-data2)**2, weights=weights))
-    # --- /rmse_weighted/ ---
+    Returns:
+    delta_q, delta_i, lat, lon"""
 
     # for each file in filenames calculate all diagnostics for each time period
     rmse_all = []
-    log_model_ens = []
-    d_delta_u, d_delta_q = [], []
+    d_delta_i, d_delta_q = [], []
+    lat, lon = None, None
     for idx, (diagn, agg, masko) in enumerate(
             zip(cfg.predictor_diagnostics,
                 cfg.predictor_aggs,
                 cfg.predictor_masko)):
-        logger.info('Calculate diagnostics for: {}'.format(diagn))
+        logger.info('Calculate diagnostics for {}...'.format(diagn))
 
         if cfg.predictor_derived[idx]:
             if diagn in MAP_DIAGNOSTIC_VARN.keys():
@@ -259,33 +256,33 @@ def calc_predictors(fn, cfg):
         os.makedirs(base_path, exist_ok=True)
 
         diagnostics = []
-        log_model_ens.append([])
-        for model_ens, filename in zip(*get_filenames(fn, varn, cfg.ensembles)):
-            logger.debug('Calculate diagnostics for {}...'.format(model_ens))
-            log_model_ens[-1].append(model_ens)
+        for filename in get_filenames(fn, varn, cfg.ensembles):
+            logger.debug('Calculate diagnostics for file {}...'.format(filename))
 
-            # NOTE: I don't understand the special handling of 'tasclt'
+            # DEBUG: I don't understand the special handling of 'tasclt'
             # if ((row['derived'] == True and diag == 'tasclt')):
             #     outfile = '%s%s%s' %(diagdir[diag], 'tas', file_start)
             # else:
             #     outfile = '%s%s' %(diagdir[diag], file_start)
             if cfg.predictor_derived[idx] and diagn == 'tasclt':
-                filename_diag = calc_CORR(filename,
-                                          base_path,
-                                          varn, 'tas',
+                filename_diag = calc_CORR(infile=filename,
+                                          base_path=base_path,
+                                          variable1=varn,
+                                          variable2='tas',
                                           masko=masko,
                                           syear=cfg.syear_eval[idx],
                                           eyear=cfg.eyear_eval[idx],
                                           season=cfg.predictor_seasons[idx],
                                           region=cfg.region)
             else:
-                filename_template = os.path.join(base_path, os.path.basename(filename))
+                filename_template = os.path.join(
+                    base_path, os.path.basename(filename))
                 filename_template = filename_template.replace('.nc', '')
 
-                filename_diag = calc_diag(filename,
-                                          filename_template,
-                                          cfg.target_diagnostic,
-                                          variable=varn, # ??
+                filename_diag = calc_diag(infile=filename,
+                                          outname=filename_template,
+                                          diagnostic=cfg.target_diagnostic,
+                                          variable=varn,
                                           masko=masko,
                                           syear=cfg.syear_eval[idx],
                                           eyear=cfg.eyear_eval[idx],
@@ -295,20 +292,18 @@ def calc_predictors(fn, cfg):
                                           overwrite=cfg.overwrite)
 
             # For each diagnostic, read data to calculate perfmetric
-            fh = nc.Dataset(filename_diag, mode = 'r')
-            try:
-                diagnostic = fh.variables[diagn][:] # global data, time, lat, lon
-            except KeyError:
-                diagnostic = fh.variables[varn][:]
-            lon = fh.variables['lon'][:]
-            lat = fh.variables['lat'][:]
-            fh.close()
+            fh = nc.Dataset(filename_diag, mode='r')
+            diagnostic = fh.variables[varn][:]  # time, lat, lon
             diagnostics.append(np.ma.filled(diagnostic, fill_value=np.nan))
+            if lat is None:
+                lat, lon = fh.variables['lat'][:], fh.variables['lon'][:]
+            fh.close()
 
-        logger.info('Calculating perfmetric for all model combinations')
+            logger.debug('Calculate diagnostics for file {}... DONE'.format(filename))
+
+        logger.debug('Calculate model independence matrix...')
         rmse_models = np.empty((len(diagnostics), len(diagnostics)),
-                            dtype=float) * np.nan
-
+                               dtype=float) * np.nan
         for ii, diagnostic1 in enumerate(diagnostics):
             for jj, diagnostic2 in enumerate(diagnostics):
                 if ii == jj:
@@ -316,13 +311,14 @@ def calc_predictors(fn, cfg):
                 elif ii > jj:  # the matrix is symmetric
                     rmse_models[ii, jj] = rmse_models[jj, ii]
                 else:
-                    rmse_models[ii, jj] = rmse_weighted(diagnostic1, diagnostic2, lat)
+                    rmse_models[ii, jj] = np.sqrt(area_weighted_mean(
+                        (diagnostic1 - diagnostic2)**2, lat, lon))
+        logger.debug('Calculate independence matrix... DONE')
 
-        # read obs data if compared to obs and calculate perfmetric
         if cfg.obsdata is not None:
-            logger.info('Reading obs data and calculating perfmetric')
+            logger.debug('Read observations & calculate model quality...')
 
-            # TODO
+            # DEBUG: calculate on the fly or find file here!
             filename_obs = '%s%s_%s_%s_%s-%s_%s_%s_%s.nc' %(
                 diagdir[diag], diag, cfg.freq, cfg.obsdata, cfg.syear_eval[i],
                 cfg.eyear_eval[i], row['res_name'], row['var_file'], cfg.region)
@@ -330,33 +326,23 @@ def calc_predictors(fn, cfg):
                 logger.error('Cannot find obs file %s, exiting.' %filename_obs)
                 raise IOError
 
-            fh = nc.Dataset(filename_obs, mode = 'r')
-            lon = fh.variables['lon'][:]
-            lat = fh.variables['lat'][:]
-            try:
-                obs = fh.variables[diagn][:] # global data,time,lat,lon
-            except KeyError:
-                obs = fh.variables[varn][:]
+            fh = nc.Dataset(filename_obs, mode='r')
+            obs = fh.variables[varn][:]
             fh.close()
 
-            # mask model data where no obs
-            # create mask based on obs
-            mask_obs = np.ma.masked_invalid(obs).mask
-            obs = np.ma.filled(obs, fill_value=np.nan)
-            diagnostics = [np.ma.array(diag, mask=mask_obs).filled(np.nan)
-                           for diag in diagnostics]
-
             rmse_obs = np.empty(len(diagnostics)) * np.nan
-            for i_diag, diagnostic in enumerate(diagnostics):
-                rmse_obs[i_diat] = rmse_weighted(diagnostic, obs, lat)
+            for ii, diagnostic in enumerate(diagnostics):
+                rmse_obs[ii] = np.sqrt(area_weighted_mean(
+                    (diagnostic - obs)**2, lat, lon))
             rmse = np.concatenate((rmse_models, rmse_obs), axis=0)
+            logger.debug('Read observations & calculate model quality... DONE')
         else:
             rmse = rmse_models
         rmse_all.append(rmse)
 
         # normalize deltas by median
         med = np.nanmedian(rmse)
-        d_delta_u.append(np.divide(rmse_models, med))
+        d_delta_i.append(np.divide(rmse_models, med))
         if cfg.obsdata:
             # NOTE: is this really the right way to normalize this??
             d_delta_q.append(np.divide(rmse_obs, med))
@@ -364,36 +350,46 @@ def calc_predictors(fn, cfg):
         # map the values of d_delta from [d_delta.min(), d_delta.max()] to [0, 1]
         # rmse_models = np.interp(rmse_models, [rmse_models.min(), rmse_models.max()], [0, 1])
 
+    delta_i = np.array(d_delta_i).mean(axis=0)  # mean over all diagnostics
     if cfg.obsdata:
-        d_delta_u, d_delta_q = np.array(d_delta_u), np.array(d_delta_q)
-        delta_u, delta_q = d_delta_u.mean(axis=0), d_delta_q.mean(axis=0)
-    else:  # if there are not observations delta_u and delta_q are identical!
-         delta_u = np.array(d_delta_u).mean(axis=0)
-         delta_q = delta_u# .mean(axis=0)  # DEBUG: .mean(axis=0) is not in Ruths script
+        delta_q = np.array(d_delta_q).mean(axis=0)  # mean over all diagnostics
+    else:  # if there are not observations delta_i and delta_q are identical!
+        delta_q = delta_i
 
-    if (log_model_ens[0] != log_model_ens[1] or
-        log_model_ens[0] != log_model_ens[2]):
-        raise ValueError
-
-    return delta_q, delta_u, lat, lon
+    return delta_q, delta_i, lat, lon
 
 
 def calc_sigmas(targets, delta_i, lat, lon, fn, cfg, debug=False):
-    """TODO: docsting"""
+    """Performs a perfect model test (e.g., Knutti et al. 2017:
+    DOI: 10.1002/2016GL072012) to find the optimal weighting for model
+    quality and independence.
+
+    Parameters:
+    - targets (np.array): 3D array (len(models), len(lat), len(lon))
+    - delta_i (np.array): 1D array (len(models),)
+    - lat, lon (np.array): 1D arrays
+    - fn (Filename object):
+    - cfg (config object):
+    - debug=False (bool, optional): If True return weights_sigmas matrix as
+      intermediate result.
+
+    Returns:
+    sigma_q, sigma_i (floats, optimal sigmas)"""
 
     targets = targets.squeeze()
 
-    sigma_size = 41
-    tmp = np.mean(delta_u)
-    sigmas_q = np.linspace(.1*tmp, 1.9*tmp, sigma_size)
-    sigmas_i = np.linspace(.1*tmp, 1.9*tmp, sigma_size)
+    SIGMA_SIZE = 41
+    tmp = np.mean(delta_i)  # DEBUG
+    sigmas_q = np.linspace(.1*tmp, 1.9*tmp, SIGMA_SIZE)
+    sigmas_i = np.linspace(.1*tmp, 1.9*tmp, SIGMA_SIZE)
 
-    models = np.array(fn.get_filenames(subset={'varn': cfg.target_diagnostic},
-                                       return_filters='model')).swapaxes(0, 1)[0]  # index of unique models
-    _, idx = np.unique(models, return_index=True)
+    models = np.array(
+        fn.get_filenames(subset={'varn': cfg.target_diagnostic},
+                         return_filters='model')).swapaxes(0, 1)[0]
+    _, idx = np.unique(models, return_index=True)  # index of unique models
     targets_1ens = targets[idx]
     delta_i_1ens = delta_i[idx, :][:, idx]
-    targets_1ens_mean = utils.area_weighted_mean(targets_1ens, lat, lon)
+    targets_1ens_mean = area_weighted_mean(targets_1ens, lat, lon)
 
     weights_sigmas = calculate_weights_sigmas(
         targets_1ens_mean, delta_i_1ens, sigmas_q, sigmas_i)
@@ -403,11 +399,12 @@ def calc_sigmas(targets, delta_i, lat, lon, fn, cfg, debug=False):
 
     # DEBUG: remove inside_ratio
     # NOTE: this is only correct if sigmas_q == sigmas_i!!
-    idx_q, idx_i, inside_ratio = calculate_optimal_sigma(targets_1ens_mean, weights_sigmas)
+    idx_q, idx_i, inside_ratio = calculate_optimal_sigma(
+        targets_1ens_mean, weights_sigmas)
+    import ipdb; ipdb.set_trace()
 
     # DEBUG: I could not yet reproduce this result!!
-    cfg.sigma_i = sigmas_i[idx_i]
-    cfg.sigma_q = sigmas_q[idx_q]
+    return sigmas_q[idx_q], sigmas_i[idx_i]
 
 
 def calc_weights(delta_i, delta_q, cfg):
@@ -419,13 +416,13 @@ def calc_weights(delta_i, delta_q, cfg):
         raise NotImplementedError
 
 
-def save_data(weights, weighted_mmm, cfg):
+def save_data():
     """TODO: docstring"""
     raise NotImplementedError
 
 
 def main():
-    utils.set_logger(level = logging.INFO)
+    utils.set_logger(level=logging.INFO)
     logger.info('Run program {}...'.format(os.path.basename(__file__)))
 
     logger.info('Load config file...')
@@ -441,16 +438,16 @@ def main():
     logger.info('Calculate target diagnostic... DONE')
 
     logger.info('Calculate predictor diagnostics and delta matrix...')
-    delta_q, delta_u, lat, lon = calc_predictors(fn, cfg)
+    delta_q, delta_i, lat, lon = calc_predictors(fn, cfg)
     logger.info('Calculate predictor diagnostics and delta matrix... DONE')
 
     if cfg.sigma_type == "inpercentile":
         logger.info('Calculate sigmas...')
-        weights = calc_sigmas(targets, delta_u, lat, lon, fn, cfg)
+        sigma_q, sigma_i = calc_sigmas(targets, delta_i, lat, lon, fn, cfg)
         logger.info('Calculate sigmas... DONE')
     elif cfg.sigma_type == 'manual':
-        logger.info('Using user sigmas: {}, {}'.format(cfg.sigma_i, cfg.sigma_q))
-
+        sigma_q, sigma_i = cfg.sigma_i, cfg.sigma_q
+        logger.info('Using user sigmas: {}, {}'.format(sigma_i, sigma_q))
     else:
         errmsg = ' '.join(['simga_type has to be one of [interpercentile |',
                            'manual] not {}'.format(cfg.sigma_type)])
@@ -458,13 +455,13 @@ def main():
         raise NotImplementedError(errmsg)
 
     logger.info('Calculate weights and weighted mean...')
-    weights = calc_weights(delta_u, delta_q, cfg)
+    weights = calc_weights(delta_i, delta_q, cfg)
     # mean = np.ma.average(np.ma.masked_invalid(targets),
     #                      weights=weights, axis=0).filled_invalid(np.nan)
     logger.info('Calculate weights and weighted mean... DONE')
 
     logger.info('Saving data...')
-    save_data(weights, weighted_mmm, cfg)
+    save_data()
     logger.info('Saving data...')
 
     logger.info('Run program {}... Done'.format(os.path.basename(__file__)))
