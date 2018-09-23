@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-09-23 13:30:55 lukas>
+Time-stamp: <2018-09-23 18:50:22 lukas>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -281,19 +281,22 @@ def calc_predictors(fn, cfg):
 
                 filename_diag = calc_diag(infile=filename,
                                           outname=filename_template,
-                                          diagnostic=cfg.target_diagnostic,
+                                          diagnostic=diagn,
                                           variable=varn,
                                           masko=masko,
                                           syear=cfg.syear_eval[idx],
                                           eyear=cfg.eyear_eval[idx],
-                                          season=cfg.target_season,
-                                          kind=cfg.target_agg,
+                                          season=cfg.predictor_seasons[idx],
+                                          kind=agg,
                                           region=cfg.region,
                                           overwrite=cfg.overwrite)
 
             # For each diagnostic, read data to calculate perfmetric
             fh = nc.Dataset(filename_diag, mode='r')
-            diagnostic = fh.variables[varn][:]  # time, lat, lon
+            try:
+                diagnostic = fh.variables[diagn][:]  # time, lat, lon
+            except KeyError:
+                diagnostic = fh.variables[varn][:]  # time, lat, lon
             diagnostics.append(np.ma.filled(diagnostic, fill_value=np.nan))
             if lat is None:
                 lat, lon = fh.variables['lat'][:], fh.variables['lon'][:]
@@ -302,12 +305,11 @@ def calc_predictors(fn, cfg):
             logger.debug('Calculate diagnostics for file {}... DONE'.format(filename))
 
         logger.debug('Calculate model independence matrix...')
-        rmse_models = np.empty((len(diagnostics), len(diagnostics)),
-                               dtype=float) * np.nan
+        rmse_models = np.empty((len(diagnostics), len(diagnostics))) * np.nan
         for ii, diagnostic1 in enumerate(diagnostics):
             for jj, diagnostic2 in enumerate(diagnostics):
                 if ii == jj:
-                    rmse_models[ii, ii] = 0.0
+                    rmse_models[ii, ii] = np.nan
                 elif ii > jj:  # the matrix is symmetric
                     rmse_models[ii, jj] = rmse_models[jj, ii]
                 else:
@@ -327,7 +329,10 @@ def calc_predictors(fn, cfg):
                 raise IOError
 
             fh = nc.Dataset(filename_obs, mode='r')
-            obs = fh.variables[varn][:]
+            try:
+                obs = fh.variables[diagn][:]
+            except KeyError:
+                obs = fh.variables[varn][:]
             fh.close()
 
             rmse_obs = np.empty(len(diagnostics)) * np.nan
@@ -348,7 +353,9 @@ def calc_predictors(fn, cfg):
             d_delta_q.append(np.divide(rmse_obs, med))
         # TODO: maybe we want to do this:
         # map the values of d_delta from [d_delta.min(), d_delta.max()] to [0, 1]
-        # rmse_models = np.interp(rmse_models, [rmse_models.min(), rmse_models.max()], [0, 1])
+        # rmse_models = np.interp(rmse_models, [np.nanmin(rmse_models), np.nanmax(rmse_models)], [0, 1])
+        # rmse_obs = np.interp(rmse_obs, [np.nanmin(rmse_obs), np.nanmax(rmse_obs)], [0, 1])
+        # d_delta_i.append(rmse_models)
 
     delta_i = np.array(d_delta_i).mean(axis=0)  # mean over all diagnostics
     if cfg.obsdata:
@@ -360,13 +367,13 @@ def calc_predictors(fn, cfg):
 
 
 def calc_sigmas(targets, delta_i, lat, lon, fn, cfg, debug=False):
-    """Performs a perfect model test (e.g., Knutti et al. 2017:
+    """Performs a perfect model test (e.g., Knutti et al., 2017;
     DOI: 10.1002/2016GL072012) to find the optimal weighting for model
     quality and independence.
 
     Parameters:
     - targets (np.array): 3D array (len(models), len(lat), len(lon))
-    - delta_i (np.array): 1D array (len(models),)
+    - delta_i (np.array): 2D array (len(models), len(models))
     - lat, lon (np.array): 1D arrays
     - fn (Filename object):
     - cfg (config object):
@@ -379,9 +386,16 @@ def calc_sigmas(targets, delta_i, lat, lon, fn, cfg, debug=False):
     targets = targets.squeeze()
 
     SIGMA_SIZE = 41
-    tmp = np.mean(delta_i)  # DEBUG
+    tmp = np.nanmean(delta_i)  # DEBUG
+
+    # a large value means all models have equal quality -> we want this as small as possible
     sigmas_q = np.linspace(.1*tmp, 1.9*tmp, SIGMA_SIZE)
+    # sigmas_q = np.linspace(.05, 1, 41)
+    # a large value means all models depend on each other, a small value means all models
+    # are independent -> we want this ~delta_i
+    # NOTE: use multiple ensemble members to determine this?!
     sigmas_i = np.linspace(.1*tmp, 1.9*tmp, SIGMA_SIZE)
+    # sigmas_i = [.5]
 
     models = np.array(
         fn.get_filenames(subset={'varn': cfg.target_diagnostic},
@@ -391,8 +405,7 @@ def calc_sigmas(targets, delta_i, lat, lon, fn, cfg, debug=False):
     delta_i_1ens = delta_i[idx, :][:, idx]
     targets_1ens_mean = area_weighted_mean(targets_1ens, lat, lon)
 
-    weights_sigmas = calculate_weights_sigmas(
-        targets_1ens_mean, delta_i_1ens, sigmas_q, sigmas_i)
+    weights_sigmas = calculate_weights_sigmas(delta_i_1ens, sigmas_q, sigmas_i)
 
     if debug:
         return weights_sigmas

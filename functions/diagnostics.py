@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-09-17 11:55:41 lukbrunn>
+Time-stamp: <2018-09-23 14:07:40 lukas>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -304,6 +304,7 @@ def calc_CORR(infile,
     filename_region_kind = '{}_{}-{}_{}_CORR_{}.nc'.format(outname, syear, eyear, season, region)
     if not overwrite and (os.path.isfile(filename_global_kind) and
                           os.path.isfile(filename_region_kind)):
+        logger.debug('Diagnostic already exists & overwrite=False, skipping.')
         if region == 'GLOBAL':
             return filename_global_kind
         return filename_region_kind

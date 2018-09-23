@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-09-20 19:52:48 lukbrunn>
+Time-stamp: <2018-09-23 18:52:32 lukas>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -20,41 +20,36 @@ logger = logging.getLogger(__name__)
 
 
 def calculate_weights(quality, independence, sigma_q, sigma_i):
-    """Calculates the weights for each model N.
+    """Calculates the (not normalised) weights for each model N.
 
     Parameters:
-    - quality (np.array): (N,) array specifying the model quality. TODO: need to be normalized?
-    - independence (np.array): (N, N) array specifying the model independence. # TODO: need to be normalized?
+    - quality (np.array): (N,) array specifying the model quality.
+    - independence (np.array): (N, N) array specifying the model independence.
     - sigma_q (float): Sigma value defining the form of the weighting function
       for the quality.
     - sigma_i (float): Sigma value defining the form of the weighting function
       for the independence.
 
     Returns:
-    np.array (N,)"""
-    if len(quality.shape) != 1 or len(independence.shape) != 2:
-        errmsg = 'quality and independence need to be 1D and 2D arrays, respectively'
-        logger.error(errmsg)
-        raise IOError(errmsg)
-    if quality.shape != independence.shape[:1]:
-        errmsg = 'quality and independence need have the same length'
-        logger.error(errmsg)
-        raise IOError(errmsg)
+    weights (N,)"""
+    assert len(quality.shape) == 1, 'quality needs to be a 1D array'
+    assert len(independence.shape) == 2, 'quality needs to be a 2D array'
+    errmsg = 'quality and independence need to have matching shapes'
+    assert quality.shape == independence.shape[:1], errmsg
+    assert isinstance(sigma_q, float), 'sigma_q needs to by of type float'
+    assert isinstance(sigma_i, float), 'sigma_i needs to by of type float'
 
     numerator = np.exp(-((quality/sigma_q)**2))
-
     exp = np.exp(-((independence/sigma_i)**2))
     sum_exp = [np.sum(np.delete(ee, ii)) for ii, ee in enumerate(exp)]  # sum i!=j
     denominator = 1 + np.array(sum_exp)
     return numerator/denominator
 
 
-def calculate_weights_sigmas(data, distances, sigmas_q, sigmas_i):
+def calculate_weights_sigmas(distances, sigmas_q, sigmas_i):
     """Calculates the weights for each model N and combination of sigma values.
-    Also calculates the weighted model mean for each combination on the fly.
 
     Parameters:
-    - data (np.array): (N,...) array of model data
     - distances (np.array): (N, N) array specifying the distances between
       each model.
     - sigmas_q (np.array): (M,) array of possible sigma values for the
@@ -64,26 +59,21 @@ def calculate_weights_sigmas(data, distances, sigmas_q, sigmas_i):
 
     Returns:
     weights (M, L, N)"""
-    if len(distances.shape) != 2:
-        errmsg = 'distances needs to be a 2D array'
-        logger.error(errmsg)
-        raise IOError(errmsg)
-    if distances.shape[0] != distances.shape[1]:
-        errmsg = 'distances needs to be of shape (N, N)'
-        logger.error(errmsg)
-        raise IOError(errmsg)
-    if data.shape[0] != distances.shape[0]:
-        errmsg = 'First dimensions of data and distances need to match'
-        logger.error(errmsg)
-        raise IOError(errmsg)
+    ss = distances.shape
+    assert len(ss) == 2, 'distances needs to be a 2D array'
+    assert ss[0] == ss[1], 'distances needs to be of shape (N, N)'
+    assert len(sigmas_q.shape) == 1, 'sigmas_q needs to be a 1D array'
+    assert len(sigmas_i.shape) == 1, 'sigmas_i needs to be a 1D array'
 
-    weights = np.empty((len(sigmas_q), len(sigmas_i)) + distances.shape) * np.nan
+    weights = np.empty((len(sigmas_q), len(sigmas_i)) + distances.shape)*np.nan
     for idx_q, sigma_q in enumerate(sigmas_q):
         for idx_i, sigma_i in enumerate(sigmas_i):
             for idx_d, dd in enumerate(distances):
                 # dd is the distance of each model to the idx_d-th model (='Truth')
                 ww = calculate_weights(dd, distances, sigma_q, sigma_i)
-                ww[idx_d] = 0.  # exclude the 'True' model
+                assert np.isnan(ww[idx_d]), 'weight for model dd should be nan'
+                ww[idx_d] = 0.  # set weight=0 to exclude the 'True' model
+                assert ww.sum() != 0, 'sigma_q chosen too small?'
                 ww /= ww.sum()  # DEBUG: normalize just to be comparable with old script
                 weights[idx_q, idx_i, idx_d] = ww
     return weights
