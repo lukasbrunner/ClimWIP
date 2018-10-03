@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-09-23 14:07:40 lukas>
+Time-stamp: <2018-09-28 12:31:01 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -14,7 +14,9 @@ Abstract:
 
 """
 import os
+import shutil
 import logging
+import regionmask
 import numpy as np
 import netCDF4 as nc
 from tempfile import TemporaryDirectory
@@ -164,12 +166,36 @@ def calc_diag(infile,
         tmpfile = os.path.join(tmpdir, 'temp.nc')
         tmpfile2 = os.path.join(tmpdir, 'temp2.nc')
 
-        # map longitude
-        cdo.sellonlatbox(-180, 180, -90, 90, input=infile, output=tmpfile)
 
-        # first change some units if necessary
+        # (1) cut temporal and spatial domains first for performance reasons
+        # move the anti-meridian to the Pacific
+        cdo.sellonlatbox(-180, 180, -90, 90, input=infile, output=tmpfile)
+        cdo.seldate('{}-01-01,{}-12-31'.format(syear, eyear),
+                    input=tmpfile, output=tmpfile2)
+        if season != 'ANN':
+            cdo.selseas(season, input=tmpfile2, output=tmpfile)
+        else:
+            os.rename(tmpfile2, tmpfile)
+
+        # (1b) need to remap ERA-Interim to the model grid
+        if 'ERA-Interim' in infile:
+            cdo.remapbic(os.path.join(REGION_DIR, 'seamask_g025.nc'),
+                         options='-b F64',
+                         input=tmpfile,
+                         output=tmpfile2)
+            os.rename(tmpfile2, tmpfile)
+
+        # (2) mask ocean if necessary
+        if masko:
+            filename_mask = os.path.join(REGION_DIR, 'seamask_g025.nc')
+            cdo.setmissval(0,
+                           input="-mul -eqc,1 %s %s" %(filename_mask, tmpfile),
+                           output=tmpfile2)
+            cdo.setmissval(1e20, input=tmpfile2, output=tmpfile)
+
+        # (3) change some units if necessary
         # TODO: is this really something that should be done here?
-        # TODO: what is the effect of this?
+        # TODO: what is the effect of this/why do we need this?
         if variable == 'pr' and  unit == 'kg m-2 s-1':
             newunit = "mm/day"
             cdo.mulc(24*60*60, input=tmpfile, output=tmpfile2)
@@ -192,31 +218,16 @@ def calc_diag(infile,
                               variable == 'tasmin' or
                               variable == 'tos'):
             newunit = "degC"
-            cdo.subc(273.15, input=tmpfile, output=tmpfile2)
+            cdo.subc(273.15, options='-b F64', input=tmpfile, output=tmpfile2)
             cdo.chunit('"K",%s' %(newunit), input=tmpfile2, output=tmpfile)
-
-        if masko:
-            filename_mask = os.path.join(REGION_DIR, 'seamask_g025.nc')
-            cdo.setmissval(0,
-                           input="-mul -eqc,1 %s %s" %(filename_mask, tmpfile),
-                           output=tmpfile2)
-            cdo.setmissval(1e20, input=tmpfile2, output=tmpfile)
 
         if variable == 'tos':
             cdo.setvrange('0,40', input=tmpfile, output=tmpfile2)
             os.rename(tmpfile2, tmpfile)
 
-        if season == 'ANN':
-            cdo.seldate('%s-01-01,%s-12-31' %(syear, eyear),
-                        input=tmpfile, output=filename_global)
-        else:
-            cdo.seldate('%s-01-01,%s-12-31' %(syear, eyear),
-                        input=tmpfile, output=tmpfile2)
-            cdo.selseas(season, input=tmpfile2, output=filename_global)
-
-        # NOTE, DELETE: data saved, clean tmpfiles
-        os.remove(tmpfile)  # remove to not make stupid mistakes
-        os.remove(tmpfile2)  # remove to not make stupid mistakes
+        # -- done with first part, save global time series & delete tmpfiles --
+        shutil.move(tmpfile, filename_global)  # save output
+        os.remove(tmpfile2)
 
         # NOTE: is this an inconsistency?
         # - Climatology is aggregated as time mean of annual mean (in the case of 'ANN')
@@ -256,6 +267,76 @@ def calc_diag(infile,
         if kind is None:
             return filename_region
         return filename_region_kind
+
+def get_mask(da, region, masko):
+    region_mask = False
+    ocean_mask = False
+
+    print('here')
+
+    if masko is not None and masko:
+        ocean_mask = regionmask.defined_regions.natural_earth.land_110.mask(da) == 1
+
+    if region is not None and isinstance(region, str):
+        if region in ['EUR_3SREX']:
+            region = ['NEU', 'CEU', 'MED']
+        region_labels = regionmask.defined_regions.srex.mask(da, wrap_lon=True)
+        region_idxs = regionmask.defined_regions.srex.map_keys(region)
+        region_mask = np.sum([region_labels == idx for idx in region_idxs],
+                             axis=0, dtype=bool)
+    elif region is not None and isinstance(region, tuple):
+        # cut a rectagular shape
+        # might be better anyway because it is faster and I have always
+        # the same (known) grid
+        raise NotImplementedError
+
+    return np.ma.mask_or(ocean_mask, region_mask)
+
+
+def calc_diag_xarray(da, kind, syear, eyear,
+                     region=None,
+                     masko=None,
+                     season=None,
+                     mask_memorized=None):
+
+    assert np.all(da['lat'].data == np.arange(-88.75, 90, 2.5))
+    assert np.all(da['lon'].data == np.arange(1.25, 360, 2.5))
+
+    da = da.sel(time=slice(str(syear), str(eyear)))
+
+    if mask_memorized is not None:
+        assert mask_memorized.shape == da['lat'].shape + da['lon'].shape
+        mask = mask_memorized
+    else:
+        mask = get_mask(da, region, masko)
+
+    if np.any(mask):
+        da = da.where(mask)
+
+    if season in ['JJA', 'SON', 'DJF', 'MAM']:
+        da = da.isel(time=da['time.season']==season)
+    elif season is not None or season != 'ANN':
+        raise NotImplementedError('season={}'.format(season))
+
+    if kind == 'CLIM':
+        da = da.groupby('time.year').mean('time')
+        da = da.mean('year')
+    elif kind == 'STD':
+        da = xr.apply_ufunc(scipy.detrend, da,
+                            input_core_dims=[['time']],
+                            output_core_dims=['time'],
+                            keep_attrs=True)
+        da = da.std('time')
+    elif kind == 'TREND':
+        da = xr.apply_ufunc(scipy.linregress, da,
+                            input_core_dims=[['time']],
+                            output_core_dims=['time'],
+                            keep_attrs=True)
+    else:
+        NotImplementedError('kind={}'.format(kind))
+
+    return da, mask_memorized
+
 
 
 def calc_CORR(infile,
