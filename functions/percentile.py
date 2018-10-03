@@ -2,77 +2,124 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-09-23 18:17:08 lukas>
+Time-stamp: <2018-10-03 16:08:38 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
 Authors:
+- Ruth Lorenz || ruth.lorenz@env.ethz.ch
 - Lukas Brunner || lukas.brunner@env.ethz.ch
 
-Abstract:
-
-"""
+Abstract: Performs a perfect model test. See 'perfect_model_test' docstring
+for more information."""
 import numpy as np
 
+from utils_python.math import quantile
+from utils_python.decorators import vectorize
 
-def weighted_quantile(values, quantiles, sample_weight=None, values_sorted=False, old_style=False):
+# a not vectorized version
+# def weighted_quantile(values, weights, quantiles):
+#     """See utils_python.math.quantile"""
+#     assert np.isclose(weights.sum(), 1., atol=.00001)
+#     assert quantiles.size == 2
+#     assert quantiles[0] < quantiles[1]
+#     assert len(weights[weights==0.]) == 1
+#     return quantile(values, quantiles, weights=weights)
+
+
+@vectorize('(n)->(m)', excluded=[0, 2])
+def weighted_quantile2(values, weights, quantiles):
     """ Very close to numpy.percentile, but supports weights.
-    NOTE: quantiles should be in [0, 1]!
-    :param values: numpy.array with data
-    :param quantiles: array-like with many quantiles needed
-    :param sample_weight: array-like of the same length as `array`
-    :param values_sorted: bool, if True, then will avoid sorting of initial array
-    :param old_style: if True, will correct output to be consistent with numpy.percentile.
-    :return: numpy.array with computed quantiles.
-    --> https://stackoverflow.com/questions/21844024/weighted-percentile-using-numpy#29677616
-    """
+    NOTE: this is a vectorized version in the 'weights' parameter.
+    It is written and tested for weights of shape (L, L, N, N), where
+    L is the length of both sigma_q & sigma_i and N is the number of models.
+    See 'Special requirements' for more information.
+
+    Parameters:
+    - values (np.array): Array of values (N,)
+    - weights (np.array): Array of weights (..., N)
+    - quantiles (np.array): Array of quantiles (2,) in [0, 1]
+
+    Special requirements which will be tested:
+    - the last dimension of 'weights' needs to be normalized
+    - quantiles needs to have len = 2 (upper and lower quantile)
+    - one weight should be zero (perfect model test)
+
+    Returns:
+    np.array with quantiles (..., 2)"""
     values = np.array(values)
+    weights = np.array(weights)
     quantiles = np.array(quantiles)
-    if sample_weight is None:
-        sample_weight = np.ones(len(values))
-    sample_weight = np.array(sample_weight)
-    assert np.all(quantiles >= 0) and np.all(quantiles <= 1), 'quantiles should be in [0, 1]'
-
-    if not values_sorted:
-        sorter = np.argsort(values)
-        values = values[sorter]
-        sample_weight = sample_weight[sorter]
-
-    weighted_quantiles = np.cumsum(sample_weight) - 0.5 * sample_weight
-    if old_style:
-        # To be convenient with np.percentile
-        weighted_quantiles -= weighted_quantiles[0]
-        weighted_quantiles /= weighted_quantiles[-1]
-    else:
-        weighted_quantiles /= np.sum(sample_weight)
-    return np.interp(quantiles, weighted_quantiles, values)
+    assert np.isclose(weights.sum(), 1., atol=.00001)
+    assert quantiles.size == 2
+    assert quantiles[0] < quantiles[1]
+    assert len(weights[weights==0.]) == 1
+    return quantile(values, quantiles, weights=weights)
 
 
-def calculate_optimal_sigma(data, weights_sigmas, perc_lower=.1, perc_upper=.9):
-    interpercentile = perc_upper - perc_lower  # DEBUG: comment in and delete next line
-    # interpercentile = ((data > np.percentile(data, 10)) &
-    #                    (data < np.percentile(data, 90))).sum() / float(len(data))
-    inside_ratio = np.zeros(weights_sigmas.shape[:2])
-    for ii in range(weights_sigmas.shape[0]):
-        for jj in range(weights_sigmas.shape[1]):
-            inside = np.zeros_like(data)
-            for kk in range(len(data)):
-                assert weights_sigmas[ii, jj, kk, kk] == 0  # CHECK
-                pp1, pp2 = weighted_quantile(data, (perc_lower, perc_upper),
-                                               weights_sigmas[ii, jj, kk])
-                inside[kk] = (pp1 <= data[kk] <= pp2)
-            inside_ratio[ii, jj] = inside.sum() / float(len(inside))
-    inside_ok = inside_ratio >= interpercentile
+def perfect_model_test(data, weights_sigmas, perc_lower=.1, perc_upper=.9):
+    """Performs a perfect model test. See Information for more information.
 
-    index_sum = 9999
-    idx_i_min, idx_q_min = None, None
-    for idx_q, qq in enumerate(inside_ok):
-        if qq.sum() == 0:
-            continue  # no fitting element
-        elif idx_q >= index_sum:
-            break  # no further optimization possible
-        idx_i = np.where(qq==1)[0][0]
-        if idx_i + idx_q < index_sum:
-            index_sum = idx_i + idx_q
-            idx_i_min, idx_q_min = idx_i, idx_q
-    return idx_q_min, idx_i_min, inside_ratio
+    Parameters:
+    - data (np.array): Array of values (M,)
+    - weights_sigmas (np.array): Array of values (N, N, M, M)
+    - perc_lower=.1 (float, optional): Float in [0, 1] and < perc_upper
+    - perc_upper=.9 (float, optional): Float in [0, 1] and > perc_lower
+
+    Returns:
+    np.array (N, N)
+
+    Information:
+    - data represents m=0...M models.
+    - weights_sigmas represents NxN different sigma combinations as well as
+      M weights for with each of the M models as 'truth' once (MxM combinations)
+
+    For a given sigma combination n in NxN and a model m in M:
+    data = [d1, d2,..., dm, ..., dM]  where 'dm' is the data of 'true' model m
+    weights_sigmas = [w1, w2,... wm, ..., wM]  where wm=0 is the weight of the 'true' model m
+
+    - wm is zero by default since the true model is excluded from the computation of percentiles
+    - from all other models the upper and lower weighted percentiles are calculated
+    - it is tested if the 'true' model m lies within these percentiles
+      (for the unweighted case we would expect given member of a distribution to lay within
+      two given percentiles in (perc_upper - perc_lower) of cases (i.e., 80% of the time for
+      0.1 and 0.9 as percentiles))
+    - this is repeated for each of the M models (and corresponding weights) as 'truth'
+    - the inside ratio for a given sigma combination n is the ratio of the number of
+      'true' models lying within their weighted percentiles to the total number
+      of models.
+    """
+    tmp = weighted_quantile2(data, weights_sigmas, (perc_lower, perc_upper))
+    assert np.all(tmp[..., 0] < tmp[..., 1])
+    errmsg = 'Lower and upper percentile equivalent! Too strong weighting?'
+    assert not np.any(np.isclose(tmp[..., 1] - tmp[..., 0], 0, atol=1.e-5)), errmsg
+    inside = (tmp[..., 0] <= data) & (data <= tmp[..., 1])
+    return inside.sum(axis=-1) / float(inside.shape[-1])
+
+
+# a not vectorized version
+# def perfect_model_test_loop(data, weights_sigmas, perc_lower=.1, perc_upper=.9):
+#     inside_ratio = np.zeros(weights_sigmas.shape[:2])
+
+#     for ii in range(weights_sigmas.shape[0]):
+#         for jj in range(weights_sigmas.shape[1]):
+#             inside = np.zeros_like(data)
+#             for kk in range(len(data)):
+#                 assert weights_sigmas[ii, jj, kk, kk] == 0  # CHECK
+#                 pp1, pp2 = weighted_quantile(data, weights_sigmas[ii, jj, kk],
+#                                              (perc_lower, perc_upper))
+
+#                 ## DEBUG: equivalent to Ruths script:
+#                 ## don't interpolate weighted percentiles but get
+#                 ## the first value that is above the lower percentile...
+#                 # idx = np.where(np.sort(data) > pp1)[0][0]
+#                 # pp1 = np.sort(data)[idx]
+
+#                 ## ...and the last value that is below the upper percentile.
+#                 # idx = np.where(np.sort(data) < pp2)[0][-1]
+#                 # pp2 = np.sort(data)[idx]
+
+#                 inside[kk] = (pp1 <= data[kk] <= pp2)
+
+#             inside_ratio[ii, jj] = inside.sum() / float(len(inside))
+#     return inside_ratio
