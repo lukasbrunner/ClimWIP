@@ -2,15 +2,17 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-02 18:25:08 lukbrunn>
+Time-stamp: <2018-10-09 12:31:37 lukas>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
-Authors:
-- Ruth Lorenz || ruth.lorenz@env.ethz.ch
-- Lukas Brunner || lukas.brunner@env.ethz.ch
+Authors
+-------
+Ruth Lorenz || ruth.lorenz@env.ethz.ch
+Lukas Brunner || lukas.brunner@env.ethz.ch
 
-Abstract:
+Abstract
+--------
 Main script of the model weighting scheme described by Ruth et al.
 2018 and Knutti et al. 2017. Reads a configuration file (default:
 ./configs/config.ini) and calculates target and predictor diagnostics. Target
@@ -18,7 +20,8 @@ diagnostics are used for a perfect model test, predictors for calculating the
 weighting functions. Returns a combined quality-independence weight for each
 included model.
 
-References:
+References
+----------
 Knutti, R., J. Sedláček, B. M. Sanderson, R. Lorenz, E. M. Fischer, and
 V. Eyring (2017), A climate model projection weighting scheme accounting
 for performance and interdependence, Geophys. Res. Lett., 44, 1909–1918,
@@ -72,17 +75,24 @@ def read_config():
 
 
 def get_filenames(fn, varn, all_members=True):
-    """Returns a list of filenames.
+    """
+    Returns a list of filenames.
 
-    Parameters:
-    - fn (class): Filename class
-    - varn (str): A valid variable name
-    - all_members=True (bool, optional): If True include all available ensemble
-      members per model. If False include only one (the first) member.
+    Parameters
+    ----------
+    fn : class
+        A Filenames class
+    varn : str
+        A valid variable name
+    all_members=True : bool, optional
+        If True include all available ensemble members per model. If False
+        include only one (the first) member.
 
-    Returns:
-    tuple, tuple (identifiers, filenames)"""
-
+    Returns
+    -------
+    filenames : tuple
+        A tuple of filenames
+    """
     model_ens, filenames = (), ()
     for model in fn.get_variable_values('model'):
         for scenario in fn.get_variable_values('scenario'):
@@ -324,20 +334,20 @@ def calc_predictors(fn, cfg):
                 'masked' if cfg.predictor_masko[idx] else 'unmasked')
             os.makedirs(base_path, exist_ok=True)
             filename_template = os.path.join(
-                    base_path, os.path.basename(filename))
+                base_path, os.path.basename(filename))
             filename_template = filename_template.replace('.nc', '')
 
             filename_obs = calc_diag(infile=filename,
-                                      outname=filename_template,
-                                      diagnostic=diagn,
-                                      variable=varn,
-                                      masko=cfg.predictor_masko[idx],
-                                      syear=cfg.predictor_startyears[idx],
-                                      eyear=cfg.predictor_endyears[idx],
-                                      season=cfg.predictor_seasons[idx],
-                                      kind=cfg.predictor_aggs[idx],
-                                      region=cfg.region,
-                                      overwrite=cfg.overwrite)
+                                     outname=filename_template,
+                                     diagnostic=diagn,
+                                     variable=varn,
+                                     masko=cfg.predictor_masko[idx],
+                                     syear=cfg.predictor_startyears[idx],
+                                     eyear=cfg.predictor_endyears[idx],
+                                     season=cfg.predictor_seasons[idx],
+                                     kind=cfg.predictor_aggs[idx],
+                                     region=cfg.region,
+                                     overwrite=cfg.overwrite)
 
             fh = nc.Dataset(filename_obs, mode='r')
             try:
@@ -458,7 +468,7 @@ def calc_sigmas(targets, delta_i, lat, lon, fn, cfg, debug=False):
             index_sum = idx_i + idx_q
             idx_i_min, idx_q_min = idx_i, idx_q
 
-    return sigmas_q[idx_q], sigmas_i[idx_i]
+    return sigmas_q[idx_q_min], sigmas_i[idx_i_min]
 
 
 def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg, fn):
@@ -506,8 +516,6 @@ def save_data(weights, fn, cfg, dtype='nc', data=None, lat=None, lon=None):
 
     if dtype == 'nc':
         from xarray import Dataset, DataArray
-        from utils_python.xarray import add_hist, area_weighted_mean
-        from utils_python.math import variance
         models, ensembles, _ = np.array(fn.get_filenames(
             subset={'varn': cfg.target_diagnostic},
             return_filters=['model', 'ensemble'])).swapaxes(0, 1)
