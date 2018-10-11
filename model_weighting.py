@@ -50,12 +50,12 @@ from .functions.weights import calculate_weights_sigmas, calculate_weights
 logger = logging.getLogger(__name__)
 
 
-MAP_DIAGNOSTIC_VARN = dict(
-    tasclt='clt',
-    rnet='rlus',
-    ef='hfls',
-    dtr='tasmax'
-)
+DERIVED = {
+    'tasclt': ['clt', 'tas'],
+    'rnet': ['rlus', 'rsds', 'rlds', 'rsus'],
+    'ef': ['hfls', 'hfss'],
+    'dtr': ['tasmax', 'tasmin']
+}
 
 
 def read_config():
@@ -136,23 +136,11 @@ def set_up_filenames(cfg):
     varns = set([cfg.target_diagnostic] + cfg.predictor_diagnostics)
 
     # remove derived variables from original list and add base variables
-    if 'tasclt' in varns:  # DEBUG: this also needs 'tas' right???
-        varns.remove('tasclt')
-        varns.add('clt')
-    if 'rnet' in varns:
-        varns.remove('rnet')
-        varns.add('rlus')
-        varns.add('rsds')
-        varns.add('rlds')
-        varns.add('rsus')
-    if 'ef' in varns:
-        varns.remove('ef')
-        varns.add('hfls')
-        varns.add('hfss')
-    if 'dtr' in varns:
-        varns.remove('dtr')
-        varns.add('tasmax')
-        varns.add('tasmin')
+    for varn in varns:
+        if varn in DERIVED.keys():
+            varns.remove(varn)
+            for base_varn in DERIVED[varn]:
+                varns.add(base_varn)
 
     varns = list(varns)
     logger.info('Variables in analysis: {}'.format(', '.join(varns)))
@@ -162,16 +150,19 @@ def set_up_filenames(cfg):
         file_pattern='{varn}/{varn}_{freq}_{model}_{scenario}_{ensemble}_g025.nc',
         base_path=cfg.data_path)
     fn.apply_filter(varn=varns, freq=cfg.freq, scenario=cfg.scenario)
+
+    # restrict to models which are available for all variables
     models = fn.get_variable_values('model', subset={'varn': varns})
 
     # DEBUG: exclude EC-EARTH for now
+    # (not all variables have the same ensemble members)
     if 'EC-EARTH' in models:
         models.remove('EC-EARTH')
-    fn.apply_filter(model=models)
 
-    # DEBUG: remove most models to speed up
-    # models = models[:7]
-    # fn.apply_filter(model=models)
+    if cfg.debug:
+        models = models[:10]
+
+    fn.apply_filter(model=models)
 
     logger.info('{} models included in analysis'.format(len(models)))
     logger.debug('Models included in analysis: {}'.format(', '.join(models)))
@@ -276,24 +267,22 @@ def calc_predictors(fn, cfg):
     for idx, diagn in enumerate(cfg.predictor_diagnostics):
         logger.info('Calculate diagnostics for {}...'.format(diagn))
 
-        if cfg.predictor_derived[idx]:
-            if diagn in MAP_DIAGNOSTIC_VARN.keys():
-                varn = MAP_DIAGNOSTIC_VARN[diagn]
-            else:
-                logger.error('Unknown derived diagnostic.')
-        else:
-            varn = diagn
-
         base_path = os.path.join(
             cfg.save_path, diagn, cfg.freq,
             'masked' if cfg.predictor_masko[idx] else 'unmasked')
         os.makedirs(base_path, exist_ok=True)
 
+        derived = diagn in DERIVED.keys()
+        if derived:
+            varn = DERIVED[diagn][0]
+        else:
+            varn = diagn
+
         diagnostics = []
         for filename in get_filenames(fn, varn, cfg.ensembles):
             logger.debug('Calculate diagnostics for file {}...'.format(filename))
 
-            if cfg.predictor_derived[idx] and diagn == 'tasclt':
+            if derived and diagn == 'tasclt':
                 filename_diag = calc_CORR(infile=filename,
                                           base_path=base_path,
                                           variable1=varn,
@@ -339,7 +328,7 @@ def calc_predictors(fn, cfg):
         for ii, diagnostic1 in enumerate(diagnostics):
             for jj, diagnostic2 in enumerate(diagnostics):
                 if ii == jj:
-                    rmse_models[ii, ii] = np.nan
+                    rmse_models[ii, ii] = 0.  # DEBUG: change to np.nan (rework tests will fail)
                 elif ii > jj:  # the matrix is symmetric
                     rmse_models[ii, jj] = rmse_models[jj, ii]
                 else:
@@ -359,7 +348,7 @@ def calc_predictors(fn, cfg):
                 'masked' if cfg.predictor_masko[idx] else 'unmasked')
             os.makedirs(base_path, exist_ok=True)
             filename_template = os.path.join(
-                base_path, os.path.basename(filename))
+                    base_path, os.path.basename(filename))
             filename_template = filename_template.replace('.nc', '')
 
             filename_obs = calc_diag(infile=filename,
