@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-05 14:49:32 lukbrunn>
+Time-stamp: <2018-10-09 11:50:21 lukas>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -14,9 +14,11 @@ Abstract:
 
 """
 import os
+import shutil
 import logging
 import regionmask
 import numpy as np
+import xarray as xr
 import netCDF4 as nc
 from tempfile import TemporaryDirectory
 from cdo import Cdo
@@ -26,8 +28,7 @@ logger = logging.getLogger(__name__)
 REGION_DIR = '{}/../cdo_data/'.format(os.path.dirname(__file__))
 
 
-def calc_Rnet(infile, outname, variable, derived = True,
-              workdir = None):
+def calc_Rnet(infile, outname, variable, derived=True, workdir=None):
     """
     Procedure to calculate derived diagnostic net radiation.
 
@@ -212,10 +213,7 @@ def calc_diag(infile,
                 cdo.chunit('"1",%s' %(newunit), input=tmpfile2, output=tmpfile)
             else:
                 logger.warning('Unit {} for variable {} not covered!'.format(unit, variable))
-        elif unit == 'K' and (variable == 'tas' or
-                              variable == 'tasmax' or
-                              variable == 'tasmin' or
-                              variable == 'tos'):
+        elif variable in ['tas', 'tasmax', 'tasmin', 'tos'] and unit == 'K':
             newunit = "degC"
             cdo.subc(273.15, options='-b F64', input=tmpfile, output=tmpfile2)
             cdo.chunit('"K",%s' %(newunit), input=tmpfile2, output=tmpfile)
@@ -225,10 +223,8 @@ def calc_diag(infile,
             os.rename(tmpfile2, tmpfile)
 
         # -- done with first part, save global time series & delete tmpfiles --
-        cdo.copy(input=tmpfile, output=filename_global)  # save output
-        os.remove(tmpfile)
-        if os.path.isfile(tmpfile):
-            os.remove(tmpfile2)
+        shutil.move(tmpfile, filename_global)  # save output
+        os.remove(tmpfile2)
 
         # NOTE: is this an inconsistency?
         # - Climatology is aggregated as time mean of annual mean (in the case of 'ANN')

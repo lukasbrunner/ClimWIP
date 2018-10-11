@@ -2,23 +2,26 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-11 14:19:32 lukbrunn>
+Time-stamp: <2018-10-09 12:31:37 lukas>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
-Authors:
-- Ruth Lorenz || ruth.lorenz@env.ethz.ch
-- Lukas Brunner || lukas.brunner@env.ethz.ch
+Authors
+-------
+Ruth Lorenz || ruth.lorenz@env.ethz.ch
+Lukas Brunner || lukas.brunner@env.ethz.ch
 
-Abstract:
-Main script of the model weighting scheme described by Lorenz et al.
+Abstract
+--------
+Main script of the model weighting scheme described by Ruth et al.
 2018 and Knutti et al. 2017. Reads a configuration file (default:
 ./configs/config.ini) and calculates target and predictor diagnostics. Target
 diagnostics are used for a perfect model test, predictors for calculating the
 weighting functions. Returns a combined quality-independence weight for each
 included model.
 
-References:
+References
+----------
 Knutti, R., J. Sedláček, B. M. Sanderson, R. Lorenz, E. M. Fischer, and
 V. Eyring (2017), A climate model projection weighting scheme accounting
 for performance and interdependence, Geophys. Res. Lett., 44, 1909–1918,
@@ -46,12 +49,12 @@ from functions.weights import calculate_weights_sigmas, calculate_weights
 logger = logging.getLogger(__name__)
 
 
-DERIVED = {
-    'tasclt': ['clt', 'tas'],
-    'rnet': ['rlus', 'rsds', 'rlds', 'rsus'],
-    'ef': ['hfls', 'hfss'],
-    'dtr': ['tasmax', 'tasmin']
-}
+MAP_DIAGNOSTIC_VARN = dict(
+    tasclt='clt',
+    rnet='rlus',
+    ef='hfls',
+    dtr='tasmax'
+)
 
 
 def read_config():
@@ -72,17 +75,24 @@ def read_config():
 
 
 def get_filenames(fn, varn, all_members=True):
-    """Returns a list of filenames.
+    """
+    Returns a list of filenames.
 
-    Parameters:
-    - fn (class): Filename class
-    - varn (str): A valid variable name
-    - all_members=True (bool, optional): If True include all available ensemble
-      members per model. If False include only one (the first) member.
+    Parameters
+    ----------
+    fn : class
+        A Filenames class
+    varn : str
+        A valid variable name
+    all_members=True : bool, optional
+        If True include all available ensemble members per model. If False
+        include only one (the first) member.
 
-    Returns:
-    tuple, tuple (identifiers, filenames)"""
-
+    Returns
+    -------
+    filenames : tuple
+        A tuple of filenames
+    """
     model_ens, filenames = (), ()
     for model in fn.get_variable_values('model'):
         for scenario in fn.get_variable_values('scenario'):
@@ -121,11 +131,23 @@ def set_up_filenames(cfg):
     varns = set([cfg.target_diagnostic] + cfg.predictor_diagnostics)
 
     # remove derived variables from original list and add base variables
-    for varn in varns:
-        if varn in DERIVED.keys():
-            varns.remove(varn)
-            for base_varn in DERIVED[varn]:
-                varns.add(base_varn)
+    if 'tasclt' in varns:  # DEBUG: this also needs 'tas' right???
+        varns.remove('tasclt')
+        varns.add('clt')
+    if 'rnet' in varns:
+        varns.remove('rnet')
+        varns.add('rlus')
+        varns.add('rsds')
+        varns.add('rlds')
+        varns.add('rsus')
+    if 'ef' in varns:
+        varns.remove('ef')
+        varns.add('hfls')
+        varns.add('hfss')
+    if 'dtr' in varns:
+        varns.remove('dtr')
+        varns.add('tasmax')
+        varns.add('tasmin')
 
     varns = list(varns)
     logger.info('Variables in analysis: {}'.format(', '.join(varns)))
@@ -135,19 +157,16 @@ def set_up_filenames(cfg):
         file_pattern='{varn}/{varn}_{freq}_{model}_{scenario}_{ensemble}_g025.nc',
         base_path=cfg.data_path)
     fn.apply_filter(varn=varns, freq=cfg.freq, scenario=cfg.scenario)
-
-    # restrict to models which are available for all variables
     models = fn.get_variable_values('model', subset={'varn': varns})
 
     # DEBUG: exclude EC-EARTH for now
-    # (not all variables have the same ensemble members)
     if 'EC-EARTH' in models:
         models.remove('EC-EARTH')
-
-    if cfg.debug:
-        models = models[:10]
-
     fn.apply_filter(model=models)
+
+    # DEBUG: remove most models to speed up
+    # models = models[:7]
+    # fn.apply_filter(model=models)
 
     logger.info('{} models included in analysis'.format(len(models)))
     logger.debug('Models included in analysis: {}'.format(', '.join(models)))
@@ -225,28 +244,31 @@ def calc_predictors(fn, cfg):
     Returns:
     delta_q, delta_i, lat, lon"""
 
+    # for each file in filenames calculate all diagnostics for each time period
     rmse_all = []
     d_delta_i, d_delta_q = [], []
     lat, lon = None, None
     for idx, diagn in enumerate(cfg.predictor_diagnostics):
         logger.info('Calculate diagnostics for {}...'.format(diagn))
 
+        if cfg.predictor_derived[idx]:
+            if diagn in MAP_DIAGNOSTIC_VARN.keys():
+                varn = MAP_DIAGNOSTIC_VARN[diagn]
+            else:
+                logger.error('Unknown derived diagnostic.')
+        else:
+            varn = diagn
+
         base_path = os.path.join(
             cfg.save_path, diagn, cfg.freq,
             'masked' if cfg.predictor_masko[idx] else 'unmasked')
         os.makedirs(base_path, exist_ok=True)
 
-        derived = diagn in DERIVED.keys()
-        if derived:
-            varn = DERIVED[diagn][0]
-        else:
-            varn = diagn
-
         diagnostics = []
         for filename in get_filenames(fn, varn, cfg.ensembles):
             logger.debug('Calculate diagnostics for file {}...'.format(filename))
 
-            if derived and diagn == 'tasclt':
+            if cfg.predictor_derived[idx] and diagn == 'tasclt':
                 filename_diag = calc_CORR(infile=filename,
                                           base_path=base_path,
                                           variable1=varn,
@@ -292,7 +314,7 @@ def calc_predictors(fn, cfg):
         for ii, diagnostic1 in enumerate(diagnostics):
             for jj, diagnostic2 in enumerate(diagnostics):
                 if ii == jj:
-                    rmse_models[ii, ii] = 0.  # DEBUG: change to np.nan (rework tests will fail)
+                    rmse_models[ii, ii] = np.nan
                 elif ii > jj:  # the matrix is symmetric
                     rmse_models[ii, jj] = rmse_models[jj, ii]
                 else:
@@ -312,20 +334,20 @@ def calc_predictors(fn, cfg):
                 'masked' if cfg.predictor_masko[idx] else 'unmasked')
             os.makedirs(base_path, exist_ok=True)
             filename_template = os.path.join(
-                    base_path, os.path.basename(filename))
+                base_path, os.path.basename(filename))
             filename_template = filename_template.replace('.nc', '')
 
             filename_obs = calc_diag(infile=filename,
-                                      outname=filename_template,
-                                      diagnostic=diagn,
-                                      variable=varn,
-                                      masko=cfg.predictor_masko[idx],
-                                      syear=cfg.predictor_startyears[idx],
-                                      eyear=cfg.predictor_endyears[idx],
-                                      season=cfg.predictor_seasons[idx],
-                                      kind=cfg.predictor_aggs[idx],
-                                      region=cfg.region,
-                                      overwrite=cfg.overwrite)
+                                     outname=filename_template,
+                                     diagnostic=diagn,
+                                     variable=varn,
+                                     masko=cfg.predictor_masko[idx],
+                                     syear=cfg.predictor_startyears[idx],
+                                     eyear=cfg.predictor_endyears[idx],
+                                     season=cfg.predictor_seasons[idx],
+                                     kind=cfg.predictor_aggs[idx],
+                                     region=cfg.region,
+                                     overwrite=cfg.overwrite)
 
             fh = nc.Dataset(filename_obs, mode='r')
             try:
@@ -409,8 +431,8 @@ def calc_sigmas(targets, delta_i, lat, lon, fn, cfg, debug=False):
     # in the case of a model with 10 members compared to a model with only one member
     # since we know that there is one model with 10 members, the larges element should be about
     # 10x the smallest one!
-    sigmas_i = np.linspace(.1*tmp, 1.9*tmp, SIGMA_SIZE)
-    # sigmas_i = np.array([.45])  # DEBUG
+    # sigmas_i = np.linspace(.1*tmp, 1.9*tmp, SIGMA_SIZE)
+    sigmas_i = np.array([.45])  # DEBUG
 
     models = np.array(
         fn.get_filenames(subset={'varn': cfg.target_diagnostic},
@@ -446,7 +468,7 @@ def calc_sigmas(targets, delta_i, lat, lon, fn, cfg, debug=False):
             index_sum = idx_i + idx_q
             idx_i_min, idx_q_min = idx_i, idx_q
 
-    return sigmas_q[idx_q], sigmas_i[idx_i]
+    return sigmas_q[idx_q_min], sigmas_i[idx_i_min]
 
 
 def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg, fn):
@@ -494,8 +516,6 @@ def save_data(weights, fn, cfg, dtype='nc', data=None, lat=None, lon=None):
 
     if dtype == 'nc':
         from xarray import Dataset, DataArray
-        from utils_python.xarray import add_hist, area_weighted_mean
-        from utils_python.math import variance
         models, ensembles, _ = np.array(fn.get_filenames(
             subset={'varn': cfg.target_diagnostic},
             return_filters=['model', 'ensemble'])).swapaxes(0, 1)
