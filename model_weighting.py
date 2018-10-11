@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-09 12:31:37 lukas>
+Time-stamp: <2018-10-11 15:54:23 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -38,13 +38,14 @@ import argparse
 import numpy as np
 import netCDF4 as nc
 
-import utils_python.utils as utils
+from utils_python import utils
 from utils_python.physics import area_weighted_mean
 from utils_python.get_filenames import Filenames
+from utils_python.xarray import add_hist
 
-from functions.diagnostics import calc_diag, calc_CORR
-from functions.percentile import perfect_model_test
-from functions.weights import calculate_weights_sigmas, calculate_weights
+from .functions.diagnostics import calc_diag, calc_CORR
+from .functions.percentile import perfect_model_test
+from .functions.weights import calculate_weights_sigmas, calculate_weights
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +77,7 @@ def read_config():
 
 def get_filenames(fn, varn, all_members=True):
     """
-    Returns a list of filenames.
+    Return a list of filenames.
 
     Parameters
     ----------
@@ -118,16 +119,20 @@ def get_filenames(fn, varn, all_members=True):
 
 
 def set_up_filenames(cfg):
-    """Sets up the Filenames object. Adds basic variables to create derived
-    diagnostics to the list.
+    """Sets up the Filenames object.
 
-    Parameters:
-    cfg (config object)
+    Add basic variables to create derived diagnostics to the list.
 
-    Returns:
-    filename object
+    Parameters
+    ----------
+    cfg : object
+        A config object
+
+    Returns
+    -------
+    fn : object
+        A Filename object
     """
-
     varns = set([cfg.target_diagnostic] + cfg.predictor_diagnostics)
 
     # remove derived variables from original list and add base variables
@@ -174,15 +179,21 @@ def set_up_filenames(cfg):
 
 
 def calc_target(fn, cfg):
-    """Calculates the target variable for each model.
+    """
+    Calculates the target variable for each model.
 
-    Parameters:
-    - fn (Filename object):
-    - cfg (config object):
+    Parameters
+    ----------
+    fn: object
+        A Filename object
+    cfg : object
+        A config object
 
-    Returns:
-    np.array of shape (len(models), len(lat), len(lon))"""
-
+    Returns
+    -------
+    targets : ndarray, shape (L, M, N)
+        Array of targets depending on models, lat, lon
+    """
     base_path = os.path.join(
         cfg.save_path, cfg.target_diagnostic, cfg.freq,
         'masked' if cfg.target_masko else 'unmasked')
@@ -232,18 +243,32 @@ def calc_target(fn, cfg):
 
 
 def calc_predictors(fn, cfg):
-    """Calculate the predictor diagnostics for each model and the distance
-    between each diagnostic and the observations (quality -- delta_q) as well
-    as the distance between the diagnostics of each model (independence --
-    delta_i).
+    """
+    Calculate the predictor diagnostics.
 
-    Parameters:
-    - fn (Filename object):
-    - cfg (config object):
+    Calculate the predictor diagnostics for each model and the distance between
+    each diagnostic and the observations (quality -- delta_q) as well as the
+    distance between the diagnostics of each model (independence -- delta_i).
 
-    Returns:
-    delta_q, delta_i, lat, lon"""
+    Parameters
+    ----------
+    fn : object
+        A Filename object
+    cfg : object
+        A config object
 
+    Returns
+    -------
+    delta_q : ndarray, shape (N,)
+        Array of distances from each model to the observations
+        TODO: case with no observations!
+    delta_i : ndarray, shape (N, N)
+        Array of distances from each model to each other model
+    lat : ndarray, shape (M,)
+        Array of latitudes.
+    lon : ndarray, shape (L,)
+        Array of longitudes.
+    """
     # for each file in filenames calculate all diagnostics for each time period
     rmse_all = []
     d_delta_i, d_delta_q = [], []
@@ -403,22 +428,36 @@ def calc_predictors(fn, cfg):
 
 
 def calc_sigmas(targets, delta_i, lat, lon, fn, cfg, debug=False):
-    """Performs a perfect model test (e.g., Knutti et al., 2017;
-    DOI: 10.1002/2016GL072012) to find the optimal weighting for model
-    quality and independence.
+    """
+    Perform a perfect model test to estimate the optimal shape parameters.
 
-    Parameters:
-    - targets (np.array): 3D array (len(models), len(lat), len(lon))
-    - delta_i (np.array): 2D array (len(models), len(models))
-    - lat, lon (np.array): 1D arrays
-    - fn (Filename object):
-    - cfg (config object):
-    - debug=False (bool, optional): If True return weights_sigmas matrix as
-      intermediate result.
+    Perform a perfect model test to estimate the optimal shape parameters for
+    model quality and independence. See, e.g., Knutti et al., 2017.
 
-    Returns:
-    sigma_q, sigma_i (floats, optimal sigmas)"""
+    Parameters
+    ----------
+    targets : array_like, shape (L, M, N)
+        Array of targets. Should depend on models, lat, lon
+    delta_i : array_like, shape (L, L)
+        Array of distances from each model to each other model
+    lat : array_like, shape(M,)
+        Array of latitudes.
+    lon : array_like, shape (N,)
+        Array of longitudes.
+    fn : object
+        A Filename object
+    cfg : object
+        A config object
+    debug : bool, optional
+        If True return weights_sigmas matrix as intermediate result.
 
+    Returns
+    -------
+    sigma_q : float
+        Optimal shape parameter for quality weighing
+    sigma_i : float
+        Optimal shape parameter for independence weighting
+    """
     SIGMA_SIZE = 41
     tmp = np.nanmean(delta_i)
 
@@ -471,47 +510,68 @@ def calc_sigmas(targets, delta_i, lat, lon, fn, cfg, debug=False):
     return sigmas_q[idx_q_min], sigmas_i[idx_i_min]
 
 
-def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg, fn):
-    """Calculate the weights for given model qualities (delta_q),
-    model independences (detal_i), and shape parameters sigma_q and sigma_i.
+def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg):
+    """
+    Calculate the weights for given set of parameters.
 
-    Parameters:
-    - delta_q (np.array): Array (N,) of distances from each model to the
-      observations.
-    - delta_i (np.array): Array (N, N) of distances from each model to each
-      other model.
-    - sigma_q (float): Float with the quality weighting shape parameter.
-    - sigma_i (float): Float with the independence weighting shape parameter.
-    - cfg (config object):
+    Calculate the weights for given model qualities (delta_q), model
+    independence (detal_i), and shape parameters sigma_q and sigma_i.
 
-    Returns:
-    np.array (N,) of weights"""
+    Parameters
+    ----------
+    delta_q : array_like, shape (N,)
+        Array of distances from each model to the observations.
+    delta_i : array like, shape (N, N)
+        Array of distances from each model to each other model.
+    sigma_q : float
+        Float giving the quality weighting shape parameter.
+    sigma_i : float
+        Float giving the independence weighting shape parameter.
+    cfg : object
+        A config object.
 
+    Returns
+    -------
+    weights : ndarray, shape (N,)
+        An array of weights
+    """
     if cfg.obsdata:
         weights = calculate_weights(delta_q, delta_i, sigma_q, sigma_i)
         return weights / weights.sum()
-    else:
-        # Not sure in what case we would need that?
-        raise NotImplementedError
+    # Not sure in what case we would need that?
+    raise NotImplementedError
 
 
 def save_data(weights, fn, cfg, dtype='nc', data=None, lat=None, lon=None):
-    """Save weights to file.
+    """Save the given weights to a file.
 
-    Parameters:
-    - weights (np.array): Array of weights
-    - fn (Filename object):
-    - cfg (config object):
-    - dtype='nc' (str, optional): String giving a valid file type. Has to be
-      on of [nc | json].
-    - data, lat, lon (np.array, optional): TODO
+    Parameters
+    ----------
+    weights : array_like
+        Array of weights
+    fn : object
+        A Filename object.
+    cfg : object
+        A config object.
+    dtype : {'nc', 'json'}, optional
+        String giving a valid file type.
+    data : array_like, optional
+        TODO
+    lat : array_like, optional
+        TODO
+    lon : array_like, optional
+        TODO
 
-    Information:
-    - dtype=nc: Size of weights needs to match the number of
-      model-ensemble combinations in fn.
+    Information
+    -----------
+    dtype='nc'
+        Size of weights needs to match the number of model-ensemble
+        combinations in fn.
 
-    Returns:
-    None"""
+    Returns
+    -------
+    None
+    """
     dtype = dtype.replace('.', '').lower()
 
     if dtype == 'nc':
@@ -549,6 +609,7 @@ def save_data(weights, fn, cfg, dtype='nc', data=None, lat=None, lon=None):
 
 
 def main():
+    """Call functions"""
     utils.set_logger(level=logging.INFO)
     logger.info('Run program {}...'.format(os.path.basename(__file__)))
 
@@ -582,7 +643,7 @@ def main():
         raise NotImplementedError(errmsg)
 
     logger.info('Calculate weights and weighted mean...')
-    weights = calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg, fn)
+    weights = calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg)
     logger.info('Calculate weights and weighted mean... DONE')
 
     logger.info('Saving data...')
