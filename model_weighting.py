@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-11 15:54:23 lukbrunn>
+Time-stamp: <2018-10-11 17:41:13 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -43,9 +43,9 @@ from utils_python.physics import area_weighted_mean
 from utils_python.get_filenames import Filenames
 from utils_python.xarray import add_hist
 
-from .functions.diagnostics import calc_diag, calc_CORR
-from .functions.percentile import perfect_model_test
-from .functions.weights import calculate_weights_sigmas, calculate_weights
+from functions.diagnostics import calc_diag, calc_CORR
+from functions.percentile import perfect_model_test
+from functions.weights import calculate_weights_sigmas, calculate_weights
 
 logger = logging.getLogger(__name__)
 
