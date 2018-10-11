@@ -1,0 +1,24 @@
+strictness: medium
+doc-warnings: true
+
+ignore-paths:
+  - docs
+  - cdo_data
+  - tests
+  - configs
+  - plot_scripts
+  - LICENSE
+  - __init__.py
+
+pylint:
+  disable:
+    - logging-format-interpolation  # allow .format in loggers
+    - too-many-locals
+    - too-many-arguments
+    - too-many-statements
+
+pep257:
+  disable:
+    - D413  # Missing blank line after last section
+    - D212  # Multi-line docstring should start at first line (wrong positive?)
+    - D213
