@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-09 11:50:21 lukas>
+Time-stamp: <2018-10-12 09:55:44 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -14,7 +14,6 @@ Abstract:
 
 """
 import os
-import shutil
 import logging
 import regionmask
 import numpy as np
@@ -223,8 +222,10 @@ def calc_diag(infile,
             os.rename(tmpfile2, tmpfile)
 
         # -- done with first part, save global time series & delete tmpfiles --
-        shutil.move(tmpfile, filename_global)  # save output
-        os.remove(tmpfile2)
+        cdo.copy(input=tmpfile, output=filename_global)
+        os.remove(tmpfile)
+        if os.path.isfile(tmpfile2):
+            os.remove(tmpfile2)
 
         # NOTE: is this an inconsistency?
         # - Climatology is aggregated as time mean of annual mean (in the case of 'ANN')
