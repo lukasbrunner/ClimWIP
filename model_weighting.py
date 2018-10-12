@@ -2,14 +2,14 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-11 17:41:13 lukbrunn>
+Time-stamp: <2018-10-12 17:24:55 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
 Authors
 -------
-Ruth Lorenz || ruth.lorenz@env.ethz.ch
-Lukas Brunner || lukas.brunner@env.ethz.ch
+- Ruth Lorenz || ruth.lorenz@env.ethz.ch
+- Lukas Brunner || lukas.brunner@env.ethz.ch
 
 Abstract
 --------
@@ -99,6 +99,22 @@ def get_filenames(fn, varn, all_members=True):
         for scenario in fn.get_variable_values('scenario'):
             ensembles = fn.get_variable_values(
                 'ensemble', subset={'scenario': scenario, 'model': model})
+
+            # remove ensemble members which are not available for all variables
+            ensemble_all = fn.get_variable_values(
+                'ensemble', subset={
+                    'scenario': scenario,
+                    'model': model,
+                    'varn': fn.get_variable_values('varn')})
+            for ensemble in ensemble_all:
+                if ensemble not in ensembles:
+                    logmsg = ' '.join([
+                        'Removed {} for model {} (not available for all',
+                        'variables)'.format(ensemble, model)])
+                    logger.warning(logmsg)
+                    ensembles.remove(ensemble)
+
+            assert len(ensembles) >= 1
             if not all_members:
                 ensembles = ensembles[:1]
             for ensemble in ensembles:
@@ -108,8 +124,6 @@ def get_filenames(fn, varn, all_members=True):
                             'model': model,
                             'scenario': scenario,
                             'ensemble': ensemble})
-                # if len(ff) != 1:  # DEBUG
-                #     import ipdb; ipdb.set_trace()
                 assert len(ff) == 1, 'len(ff) should be one!'
                 filenames += (ff[0],)
 
@@ -154,11 +168,23 @@ def set_up_filenames(cfg):
     # restrict to models which are available for all variables
     models = fn.get_variable_values('model', subset={'varn': varns})
 
-    # DEBUG: exclude EC-EARTH for now
-    # (not all variables have the same ensemble members)
-    if 'EC-EARTH' in models:
-        models.remove('EC-EARTH')
+    # only use user-set models
+    if cfg.select_models is not None:
+        if len(cfg.select_models) != len(
+                set(cfg.select_models).intersection(models)):
+            errmsg = ' '.join([
+                'select_models is not None but not all given models contain',
+                'all required variables ([{}] not in [{}])'.format(
+                    ', '.join(cfg.select_models), ', '.join(models))])
+            raise ValueError(errmsg)
+        models = cfg.select_models
 
+    # # DEBUG: exclude EC-EARTH for now
+    # # (not all variables have the same ensemble members)
+    # if 'EC-EARTH' in models:
+    #     models.remove('EC-EARTH')
+
+    # DELETE: use cfg.select_models instead
     if cfg.debug:
         models = models[:10]
 
@@ -370,6 +396,7 @@ def calc_predictors(fn, cfg):
                 obs = fh.variables[varn][:]
             fh.close()
 
+            # TODO: remove for loop & vectorize
             rmse_obs = np.empty(len(diagnostics)) * np.nan
             for ii, diagnostic in enumerate(diagnostics):
                 rmse_obs[ii] = np.sqrt(area_weighted_mean(
@@ -380,17 +407,28 @@ def calc_predictors(fn, cfg):
             rmse = rmse_models
         rmse_all.append(rmse)
 
-        # normalize deltas by median
-        med = np.nanmedian(rmse)
-        d_delta_i.append(np.divide(rmse_models, med))
+        logger.debug('Normalize data...')
+        if cfg.performance_normalize.lower() == 'median':
+            rmse_models /= np.nanmedian(rmse)
+            if cfg.obsdata:
+                rmse_obs /= np.nanmedian(rmse)
+        elif cfg.performance_normalize.lower() == 'mean':
+            rmse_models /= np.nanmean(rmse)
+            if cfg.obsdata:
+                rmse_obs /= np.nanmean(rmse)
+        elif cfg.performance_normalize.lower() == 'map':  # TODO: test!
+            rmse_models = np.interp(
+                rmse_models, [np.nanmin(rmse), np.nanmax(rmse)], [0, 1])
+            if cfg.obsdata:
+                rmse_obs = np.interp(
+                    rmse_obs, [np.nanmin(rmse), np.nanmax(rmse)], [0, 1])
+        elif cfg.performance_normalize is not None:
+            raise ValueError
+        logger.debug('Normalize data... DONE')
+
+        d_delta_i.append(rmse_models)
         if cfg.obsdata:
-            # NOTE: is this really the right way to normalize this??
-            d_delta_q.append(np.divide(rmse_obs, med))
-        # TODO: maybe we want to do this:
-        # map the values of d_delta from [d_delta.min(), d_delta.max()] to [0, 1]
-        # rmse_models = np.interp(rmse_models, [np.nanmin(rmse_models), np.nanmax(rmse_models)], [0, 1])
-        # rmse_obs = np.interp(rmse_obs, [np.nanmin(rmse_obs), np.nanmax(rmse_obs)], [0, 1])
-        # d_delta_i.append(rmse_models)
+            d_delta_q.append(rmse_obs)
 
     # import xarray as xr
     # models, ensembles = np.array(
@@ -407,9 +445,9 @@ def calc_predictors(fn, cfg):
     #         'rmse_obs': (('diagnostic', 'model_ensemble'), d_delta_q)})
     # ds.to_netcdf('./plot_scripts/rmse.nc')
 
-    delta_i = np.array(d_delta_i).mean(axis=0)  # mean over all diagnostics
+    delta_i = np.mean(d_delta_i, axis=0)  # mean over all diagnostics
     if cfg.obsdata:
-        delta_q = np.array(d_delta_q).mean(axis=0)  # mean over all diagnostics
+        delta_q = np.mean(d_delta_q, axis=0)  # mean over all diagnostics
     else:  # if there are not observations delta_i and delta_q are identical!
         delta_q = delta_i
 
@@ -496,6 +534,7 @@ def calc_sigmas(targets, delta_i, lat, lon, fn, cfg, debug=False):
             index_sum = idx_i + idx_q
             idx_i_min, idx_q_min = idx_i, idx_q
 
+    import ipdb; ipdb.set_trace()
     return sigmas_q[idx_q_min], sigmas_i[idx_i_min]
 
 
@@ -588,7 +627,6 @@ def save_data(weights, fn, cfg, dtype='nc', data=None, lat=None, lon=None):
                 dims=('model_ensemble', 'lat', 'lon'),
                 name=cfg.target_diagnostic)
             ds[cfg.target_diagnostic] = da
-            import ipdb; ipdb.set_trace()
         add_hist(ds)
         filename = os.path.join(cfg.save_path, '{}.nc'.format(cfg.config))
         ds.to_netcdf(filename)
@@ -618,18 +656,13 @@ def main():
     delta_q, delta_i, lat, lon = calc_predictors(fn, cfg)
     logger.info('Calculate predictor diagnostics and delta matrix... DONE')
 
-    if cfg.sigma_type == "inpercentile":
+    if cfg.sigma_i is None or cfg.sigma_q is None:
         logger.info('Calculate sigmas...')
         sigma_q, sigma_i = calc_sigmas(targets, delta_i, lat, lon, fn, cfg)
         logger.info('Calculate sigmas... DONE')
-    elif cfg.sigma_type == 'manual':
+    else:
         sigma_q, sigma_i = cfg.sigma_i, cfg.sigma_q
         logger.info('Using user sigmas: {}, {}'.format(sigma_i, sigma_q))
-    else:
-        errmsg = ' '.join(['simga_type has to be one of [interpercentile |',
-                           'manual] not {}'.format(cfg.sigma_type)])
-        logger.error(errmsg)
-        raise NotImplementedError(errmsg)
 
     logger.info('Calculate weights and weighted mean...')
     weights = calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg)
