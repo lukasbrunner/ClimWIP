@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-03 16:08:38 lukbrunn>
+Time-stamp: <2018-10-12 16:09:01 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -29,24 +29,35 @@ from utils_python.decorators import vectorize
 
 @vectorize('(n)->(m)', excluded=[0, 2])
 def weighted_quantile2(values, weights, quantiles):
-    """ Very close to numpy.percentile, but supports weights.
+    """Very close to numpy.percentile, but supports weights.
+
     NOTE: this is a vectorized version in the 'weights' parameter.
     It is written and tested for weights of shape (L, L, N, N), where
     L is the length of both sigma_q & sigma_i and N is the number of models.
     See 'Special requirements' for more information.
 
-    Parameters:
-    - values (np.array): Array of values (N,)
-    - weights (np.array): Array of weights (..., N)
-    - quantiles (np.array): Array of quantiles (2,) in [0, 1]
+    Parameters
+    ----------
+    values : array_like, shape (N,)
+        Array of values.
+    weights : array_like, shape (..., N)
+        Array of values, last dimension has to match values.
+    quantiles : array_like, shape(2,)
+        Array of quantiles, has to be of length 2.
 
-    Special requirements which will be tested:
+    Returns
+    -------
+    quantiles : ndarray, shape (..., 2)
+        Array of quantiles of same shape as weights except for the last
+        dimension which will contain the lower and upper quantile.
+
+    Special requirements
+    --------------------
     - the last dimension of 'weights' needs to be normalized
     - quantiles needs to have len = 2 (upper and lower quantile)
     - one weight should be zero (perfect model test)
 
-    Returns:
-    np.array with quantiles (..., 2)"""
+    """
     values = np.array(values)
     weights = np.array(weights)
     quantiles = np.array(quantiles)
@@ -54,22 +65,32 @@ def weighted_quantile2(values, weights, quantiles):
     assert quantiles.size == 2
     assert quantiles[0] < quantiles[1]
     assert len(weights[weights==0.]) == 1
+    values = values[weights!=0.]  # explicitly exclude the perfect model
+    weights = weights[weights!=0.]
     return quantile(values, quantiles, weights=weights)
 
 
 def perfect_model_test(data, weights_sigmas, perc_lower=.1, perc_upper=.9):
-    """Performs a perfect model test. See Information for more information.
+    """Perform a perfect model test.
 
-    Parameters:
-    - data (np.array): Array of values (M,)
-    - weights_sigmas (np.array): Array of values (N, N, M, M)
-    - perc_lower=.1 (float, optional): Float in [0, 1] and < perc_upper
-    - perc_upper=.9 (float, optional): Float in [0, 1] and > perc_lower
+    Parameters
+    ----------
+    data : array_like, shape (M,)
+        Array of data.
+    weights_sigmas : array_like, shape (N, N, M, M)
+        Array of weights
+    perc_lower : float, optional
+        Has to be in [0, 1] and < perc_upper
+    perc_upper : float, optional
+        Has to be in [0, 1] and > perc_lower
 
-    Returns:
-    np.array (N, N)
+    Returns
+    -------
+    inside_ratio : ndarray, shape(N, N)
+        See Information
 
-    Information:
+    Information
+    -----------
     - data represents m=0...M models.
     - weights_sigmas represents NxN different sigma combinations as well as
       M weights for with each of the M models as 'truth' once (MxM combinations)
