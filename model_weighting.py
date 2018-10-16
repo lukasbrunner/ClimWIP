@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-12 17:24:55 lukbrunn>
+Time-stamp: <2018-10-16 15:58:13 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -36,6 +36,7 @@ import os
 import logging
 import argparse
 import numpy as np
+import xarray as xr
 import netCDF4 as nc
 
 from utils_python import utils
@@ -75,7 +76,7 @@ def read_config():
     return cfg
 
 
-def get_filenames(fn, varn, all_members=True):
+def get_filenames(fn, varn, all_members=True, return_models=False):
     """
     Return a list of filenames.
 
@@ -94,41 +95,48 @@ def get_filenames(fn, varn, all_members=True):
     filenames : tuple
         A tuple of filenames
     """
-    model_ens, filenames = (), ()
+    scenario = fn.get_variable_values('scenario')[0]
+
+    modeln, ensn, filenames = (), (), ()
     for model in fn.get_variable_values('model'):
-        for scenario in fn.get_variable_values('scenario'):
-            ensembles = fn.get_variable_values(
-                'ensemble', subset={'scenario': scenario, 'model': model})
+        ensembles = fn.get_variable_values(
+            'ensemble', subset={'scenario': scenario,
+                                'model': model,
+                                'varn': varn})
 
-            # remove ensemble members which are not available for all variables
-            ensemble_all = fn.get_variable_values(
-                'ensemble', subset={
-                    'scenario': scenario,
-                    'model': model,
-                    'varn': fn.get_variable_values('varn')})
-            for ensemble in ensemble_all:
-                if ensemble not in ensembles:
-                    logmsg = ' '.join([
-                        'Removed {} for model {} (not available for all',
-                        'variables)'.format(ensemble, model)])
-                    logger.warning(logmsg)
-                    ensembles.remove(ensemble)
+        # remove ensemble members which are not available for all variables
+        ensembles_all = fn.get_variable_values(
+            'ensemble', subset={
+                'scenario': scenario,
+                'model': model,
+                'varn': fn.get_variable_values('varn')})
+        for ensemble in ensembles:
+            if ensemble not in ensembles_all:
+                logmsg = ' '.join([
+                    'Removed {} from {} (not available for all',
+                    'variables)']).format(ensemble, model)
+                logger.warning(logmsg)
+                ensembles.remove(ensemble)
 
-            assert len(ensembles) >= 1
-            if not all_members:
-                ensembles = ensembles[:1]
-            for ensemble in ensembles:
-                model_ens += ('{}-{}'.format(model, ensemble),)
-                ff = fn.get_filenames(
-                    subset={'varn': varn,
-                            'model': model,
-                            'scenario': scenario,
-                            'ensemble': ensemble})
-                assert len(ff) == 1, 'len(ff) should be one!'
-                filenames += (ff[0],)
+        assert len(ensembles) >= 1
+        if not all_members:
+            ensembles = ensembles[:1]
+        for ensemble in ensembles:
+            modeln += (model,)
+            ensn += (ensemble,)
+            ff = fn.get_filenames(
+                subset={'varn': varn,
+                        'model': model,
+                        'scenario': scenario,
+                        'ensemble': ensemble})
+            assert len(ff) == 1, 'len(ff) should be one!'
+            filenames += (ff[0],)
 
     logger.info('{} files found.'.format(len(filenames)))
-    logger.debug(', '.join(map(str, model_ens)))
+    logger.debug(', '.join(['{}_{}'.format(mm, ee)
+                            for mm, ee in zip(modeln, ensn)]))
+    if return_models:
+        return modeln, ensn
     return filenames
 
 
@@ -164,6 +172,7 @@ def set_up_filenames(cfg):
         file_pattern='{varn}/{varn}_{freq}_{model}_{scenario}_{ensemble}_g025.nc',
         base_path=cfg.data_path)
     fn.apply_filter(varn=varns, freq=cfg.freq, scenario=cfg.scenario)
+    assert len(fn.get_variable_values('scenario')) == 1
 
     # restrict to models which are available for all variables
     models = fn.get_variable_values('model', subset={'varn': varns})
@@ -178,15 +187,6 @@ def set_up_filenames(cfg):
                     ', '.join(cfg.select_models), ', '.join(models))])
             raise ValueError(errmsg)
         models = cfg.select_models
-
-    # # DEBUG: exclude EC-EARTH for now
-    # # (not all variables have the same ensemble members)
-    # if 'EC-EARTH' in models:
-    #     models.remove('EC-EARTH')
-
-    # DELETE: use cfg.select_models instead
-    if cfg.debug:
-        models = models[:10]
 
     fn.apply_filter(model=models)
 
@@ -305,7 +305,7 @@ def calc_predictors(fn, cfg):
             varn = diagn
 
         diagnostics = []
-        for filename in get_filenames(fn, varn, cfg.ensembles):
+        for i_filename, filename in enumerate(get_filenames(fn, varn, cfg.ensembles)):
             logger.debug('Calculate diagnostics for file {}...'.format(filename))
 
             if derived and diagn == 'tasclt':
@@ -336,6 +336,7 @@ def calc_predictors(fn, cfg):
                                           region=cfg.region,
                                           overwrite=cfg.overwrite)
 
+            # TODO: replace with xarray
             # For each diagnostic, read data to calculate perfmetric
             fh = nc.Dataset(filename_diag, mode='r')
             try:
@@ -354,7 +355,7 @@ def calc_predictors(fn, cfg):
         for ii, diagnostic1 in enumerate(diagnostics):
             for jj, diagnostic2 in enumerate(diagnostics):
                 if ii == jj:
-                    rmse_models[ii, ii] = 0.  # DEBUG: change to np.nan (rework tests will fail)
+                    rmse_models[ii, ii] = np.nan
                 elif ii > jj:  # the matrix is symmetric
                     rmse_models[ii, jj] = rmse_models[jj, ii]
                 else:
@@ -497,12 +498,11 @@ def calc_sigmas(targets, delta_i, lat, lon, fn, cfg, debug=False):
     # in the case of a model with 10 members compared to a model with only one member
     # since we know that there is one model with 10 members, the larges element should be about
     # 10x the smallest one!
-    # sigmas_i = np.linspace(.1*tmp, 1.9*tmp, SIGMA_SIZE)
-    sigmas_i = np.array([.45])  # DEBUG
+    sigmas_i = np.linspace(.1*tmp, 1.9*tmp, SIGMA_SIZE)
+    # sigmas_i = np.array([.45])  # DEBUG
 
-    models = np.array(
-        fn.get_filenames(subset={'varn': cfg.target_diagnostic},
-                         return_filters='model')).swapaxes(0, 1)[0]
+    models, ensembles = get_filenames(fn, cfg.target_diagnostic, cfg.ensembles, True)
+    assert len(models) == len(targets)
     _, idx = np.unique(models, return_index=True)  # index of unique models
     targets_1ens = targets[idx]
     delta_i_1ens = delta_i[idx, :][:, idx]
@@ -515,9 +515,11 @@ def calc_sigmas(targets, delta_i, lat, lon, fn, cfg, debug=False):
 
     # ratio of perfect models inside their respective weighted percentiles
     # for each sigma combination
-    inside_ratio = perfect_model_test(targets_1ens_mean, weights_sigmas)
+    inside_ratio = perfect_model_test(targets_1ens_mean, weights_sigmas,
+                                      perc_lower=cfg.percentiles[0],
+                                      perc_upper=cfg.percentiles[1])
 
-    inside_ok = inside_ratio >= .8  # NOTE: 80% of time
+    inside_ok = inside_ratio >= cfg.inside_ratio
 
     # in this matrix (i, j) find the element with the smallest sum i+j
     # which is True
@@ -534,7 +536,6 @@ def calc_sigmas(targets, delta_i, lat, lon, fn, cfg, debug=False):
             index_sum = idx_i + idx_q
             idx_i_min, idx_q_min = idx_i, idx_q
 
-    import ipdb; ipdb.set_trace()
     return sigmas_q[idx_q_min], sigmas_i[idx_i_min]
 
 
@@ -604,17 +605,15 @@ def save_data(weights, fn, cfg, dtype='nc', data=None, lat=None, lon=None):
 
     if dtype == 'nc':
         from xarray import Dataset, DataArray
-        models, ensembles, _ = np.array(fn.get_filenames(
-            subset={'varn': cfg.target_diagnostic},
-            return_filters=['model', 'ensemble'])).swapaxes(0, 1)
+        models, ensembles = get_filenames(fn, cfg.target_diagnostic, cfg.ensembles, True)
         model_ensemble = [
             '{}_{}'.format(mm, ee) for mm, ee in zip(models, ensembles)]
         ds = Dataset(
             coords={
-                'model_ensemble': model_ensemble},
+                'model_ensemble': np.array(model_ensemble)},
             data_vars={
-                'model': ('model_ensemble', models),
-                'ensemble': ('model_ensemble', ensembles),
+                'model': ('model_ensemble', np.array(models)),
+                'ensemble': ('model_ensemble', np.array(ensembles)),
                 'weights': ('model_ensemble', weights)},
             attrs={
                 'config': cfg.config,
@@ -622,7 +621,7 @@ def save_data(weights, fn, cfg, dtype='nc', data=None, lat=None, lon=None):
         if data is not None:
             da = DataArray(
                 data=data,
-                coords={'model_ensemble': model_ensemble,
+                coords={'model_ensemble': np.array(model_ensemble),
                         'lat': lat, 'lon': lon},
                 dims=('model_ensemble', 'lat', 'lon'),
                 name=cfg.target_diagnostic)
