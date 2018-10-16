@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-02 16:52:47 lukbrunn>
+Time-stamp: <2018-10-16 11:40:06 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -75,7 +75,7 @@ def calculate_weights_sigmas(distances, sigmas_q, sigmas_i):
                 ww = calculate_weights(dd, distances, sigma_q, sigma_i)
                 assert np.isnan(ww[idx_d]), 'weight for model dd should be nan'
                 ww[idx_d] = 0.  # set weight=0 to exclude the 'True' model
-                assert ww.sum() != 0, 'sigma_q chosen too small?'
-                ww /= ww.sum()  # DEBUG: normalize just to be comparable with old script
+                assert ww.sum() != 0, 'weights = 0! sigma_q too small?'
+                ww /= ww.sum()  # normalize weights
                 weights[idx_q, idx_i, idx_d] = ww
     return weights
