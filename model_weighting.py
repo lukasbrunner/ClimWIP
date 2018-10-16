@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-16 15:58:13 lukbrunn>
+Time-stamp: <2018-10-16 18:12:58 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -40,9 +40,9 @@ import xarray as xr
 import netCDF4 as nc
 
 from utils_python import utils
-from utils_python.physics import area_weighted_mean
+# from utils_python.physics import area_weighted_mean
 from utils_python.get_filenames import Filenames
-from utils_python.xarray import add_hist
+from utils_python.xarray import add_hist, area_weighted_mean
 
 from functions.diagnostics import calc_diag, calc_CORR
 from functions.percentile import perfect_model_test
@@ -76,7 +76,7 @@ def read_config():
     return cfg
 
 
-def get_filenames(fn, varn, all_members=True, return_models=False):
+def get_filenames(fn, varn, all_members=True):
     """
     Return a list of filenames.
 
@@ -97,7 +97,7 @@ def get_filenames(fn, varn, all_members=True, return_models=False):
     """
     scenario = fn.get_variable_values('scenario')[0]
 
-    modeln, ensn, filenames = (), (), ()
+    model_ensemble, filenames = (), ()
     for model in fn.get_variable_values('model'):
         ensembles = fn.get_variable_values(
             'ensemble', subset={'scenario': scenario,
@@ -122,8 +122,7 @@ def get_filenames(fn, varn, all_members=True, return_models=False):
         if not all_members:
             ensembles = ensembles[:1]
         for ensemble in ensembles:
-            modeln += (model,)
-            ensn += (ensemble,)
+            model_ensemble += ('{}_{}'.format(model, ensemble),)
             ff = fn.get_filenames(
                 subset={'varn': varn,
                         'model': model,
@@ -133,11 +132,8 @@ def get_filenames(fn, varn, all_members=True, return_models=False):
             filenames += (ff[0],)
 
     logger.info('{} files found.'.format(len(filenames)))
-    logger.debug(', '.join(['{}_{}'.format(mm, ee)
-                            for mm, ee in zip(modeln, ensn)]))
-    if return_models:
-        return modeln, ensn
-    return filenames
+    logger.debug(', '.join(model_ensemble))
+    return filenames, model_ensemble
 
 
 def set_up_filenames(cfg):
@@ -217,8 +213,8 @@ def calc_target(fn, cfg):
     os.makedirs(base_path, exist_ok=True)
 
     targets = []
-    for filename in get_filenames(fn, cfg.target_diagnostic, cfg.ensembles):
-        logger.debug('Calculate diagnostics for file {}...'.format(filename))
+    for filename, model_ensemble in zip(*get_filenames(fn, cfg.target_diagnostic, cfg.ensembles)):
+        logger.debug('Calculate diagnostics for {}...'.format(model_ensemble))
         filename_template = os.path.join(base_path, os.path.basename(filename))
         filename_template = filename_template.replace('.nc', '')
 
@@ -232,10 +228,8 @@ def calc_target(fn, cfg):
                                   kind=cfg.target_agg,
                                   region=cfg.region,
                                   overwrite=cfg.overwrite)
-
-        fh = nc.Dataset(filename_diag, mode='r')
-        target = fh.variables[cfg.target_diagnostic][:]  # time, lat, lon
-        fh.close()
+        target = xr.open_dataset(filename_diag)
+        target = target.squeeze('time')
 
         if cfg.target_startyear_ref is not None:
             filename_diag = calc_diag(infile=filename,
@@ -249,14 +243,14 @@ def calc_target(fn, cfg):
                                       region=cfg.region,
                                       overwrite=cfg.overwrite)
 
-            fh = nc.Dataset(filename_diag, mode='r')
-            target_hist = fh.variables[cfg.target_diagnostic][:]  # time, lat, lon
-            fh.close()
-            target -= target_hist
+            target_hist = xr.open_dataset(filename_diag)
+            target_hist = target_hist.squeeze('time')
+            target[cfg.target_diagnostic] -= target_hist[cfg.target_diagnostic]
 
-        targets.append(np.ma.filled(target, fill_value=np.nan))
+        target['model_ensemble'] = xr.DataArray([model_ensemble], dims='model_ensemble')
+        targets.append(target)
         logger.debug('Calculate diagnostics for file {}... DONE'.format(filename))
-    return np.array(targets).squeeze()
+    return xr.concat(targets, dim='model_ensemble')
 
 
 def calc_predictors(fn, cfg):
@@ -287,9 +281,8 @@ def calc_predictors(fn, cfg):
         Array of longitudes.
     """
     # for each file in filenames calculate all diagnostics for each time period
-    rmse_all = []
-    d_delta_i, d_delta_q = [], []
-    lat, lon = None, None
+    diagnostics_all = []
+    data_all = []
     for idx, diagn in enumerate(cfg.predictor_diagnostics):
         logger.info('Calculate diagnostics for {}...'.format(diagn))
 
@@ -304,9 +297,13 @@ def calc_predictors(fn, cfg):
         else:
             varn = diagn
 
+        # if derived:
+        #     filename_matrix = [get_filenames(fn, varn, cfg.ensembles)[0]
+        #                        for varn in DERIVED[diagn]]
+
         diagnostics = []
-        for i_filename, filename in enumerate(get_filenames(fn, varn, cfg.ensembles)):
-            logger.debug('Calculate diagnostics for file {}...'.format(filename))
+        for filename, model_ensemble in zip(*get_filenames(fn, varn, cfg.ensembles)):
+            logger.debug('Calculate diagnostics for {}...'.format(model_ensemble))
 
             if derived and diagn == 'tasclt':
                 filename_diag = calc_CORR(infile=filename,
@@ -336,31 +333,33 @@ def calc_predictors(fn, cfg):
                                           region=cfg.region,
                                           overwrite=cfg.overwrite)
 
-            # TODO: replace with xarray
-            # For each diagnostic, read data to calculate perfmetric
-            fh = nc.Dataset(filename_diag, mode='r')
-            try:
-                diagnostic = fh.variables[diagn][:]  # time, lat, lon
-            except KeyError:
-                diagnostic = fh.variables[varn][:]  # time, lat, lon
-            diagnostics.append(np.ma.filled(diagnostic, fill_value=np.nan))
-            if lat is None:
-                lat, lon = fh.variables['lat'][:], fh.variables['lon'][:]
-            fh.close()
-
+            diagnostic = xr.open_dataset(filename_diag)
+            diagnostic = diagnostic.squeeze('time')
+            diagnostic['model_ensemble'] = xr.DataArray(
+                [model_ensemble], dims='model_ensemble')
+            diagnostics.append(diagnostic)
             logger.debug('Calculate diagnostics for file {}... DONE'.format(filename))
+        diagnostics = xr.concat(diagnostics, dim='model_ensemble')  # merge to one Dataset
+
+        # TODO: handle variable names in a more elegant way
+        # TODO: this is connected to the handling of derived variables!
+        varn = list(set(diagnostics.variables).difference(diagnostics.coords))
+        assert len(varn) == 1
+        varn = varn[0]
 
         logger.debug('Calculate model independence matrix...')
-        rmse_models = np.empty((len(diagnostics), len(diagnostics))) * np.nan
-        for ii, diagnostic1 in enumerate(diagnostics):
-            for jj, diagnostic2 in enumerate(diagnostics):
+        diagnostics['rmse_models'] = xr.DataArray(
+            np.empty((len(diagnostics[varn]), len(diagnostics[varn]))) * np.nan,
+            dims=('model_ensemble', 'model_ensemble'))
+        for ii, diagnostic1 in enumerate(diagnostics[varn]):
+            for jj, diagnostic2 in enumerate(diagnostics[varn]):
                 if ii == jj:
-                    rmse_models[ii, ii] = np.nan
+                    diagnostics['rmse_models'].data[ii, ii] = np.nan
                 elif ii > jj:  # the matrix is symmetric
-                    rmse_models[ii, jj] = rmse_models[jj, ii]
+                    diagnostics['rmse_models'].data[ii, jj] = diagnostics['rmse_models'].data[jj, ii]
                 else:
-                    rmse_models[ii, jj] = np.sqrt(area_weighted_mean(
-                        (diagnostic1 - diagnostic2)**2, lat, lon))
+                    diagnostics['rmse_models'].data[ii, jj] = np.sqrt(area_weighted_mean(
+                        (diagnostic1 - diagnostic2)**2))
         logger.debug('Calculate independence matrix... DONE')
 
         if cfg.obsdata is not None:
@@ -390,46 +389,36 @@ def calc_predictors(fn, cfg):
                                      region=cfg.region,
                                      overwrite=cfg.overwrite)
 
-            fh = nc.Dataset(filename_obs, mode='r')
-            try:
-                obs = fh.variables[diagn][:]
-            except KeyError:
-                obs = fh.variables[varn][:]
-            fh.close()
-
-            # TODO: remove for loop & vectorize
-            rmse_obs = np.empty(len(diagnostics)) * np.nan
-            for ii, diagnostic in enumerate(diagnostics):
-                rmse_obs[ii] = np.sqrt(area_weighted_mean(
-                    (diagnostic - obs)**2, lat, lon))
-            rmse = np.concatenate((rmse_models, [rmse_obs]), axis=0)
+            obs = xr.open_dataset(filename_obs)
+            obs = obs.squeeze('time')
+            diagnostics['rmse_obs'] = np.sqrt(area_weighted_mean(
+                    (diagnostics[varn] - obs[varn])**2))
             logger.debug('Read observations & calculate model quality... DONE')
-        else:
-            rmse = rmse_models
-        rmse_all.append(rmse)
 
         logger.debug('Normalize data...')
+
+        norm = diagnostics['rmse_models'].data
+        if cfg.obsdata:
+            norm = np.concatenate([norm, [diagnostics['rmse_obs'].data]], axis=0)
+
         if cfg.performance_normalize.lower() == 'median':
-            rmse_models /= np.nanmedian(rmse)
+            diagnostics['rmse_models'] /= np.nanmedian(norm)
             if cfg.obsdata:
-                rmse_obs /= np.nanmedian(rmse)
+                diagnostics['rmse_obs'] /= np.nanmedian(norm)
         elif cfg.performance_normalize.lower() == 'mean':
-            rmse_models /= np.nanmean(rmse)
+            diagnostics['rmse_models'] /= np.nanmean(norm)
             if cfg.obsdata:
-                rmse_obs /= np.nanmean(rmse)
-        elif cfg.performance_normalize.lower() == 'map':  # TODO: test!
-            rmse_models = np.interp(
-                rmse_models, [np.nanmin(rmse), np.nanmax(rmse)], [0, 1])
+                diagnostics['rmse_obs'] /= np.nanmean(norm)
+        elif cfg.performance_normalize.lower() == 'map':  # TODO: needs testing!
+            diagnostics['rmse_models'] = np.interp(
+                 diagnostics['rmse_models'], [np.nanmin(norm), np.nanmax(norm)], [0, 1])
             if cfg.obsdata:
-                rmse_obs = np.interp(
-                    rmse_obs, [np.nanmin(rmse), np.nanmax(rmse)], [0, 1])
+                diagnostics['rmse_obs'] = np.interp(
+                    diagnostics['rmse_obs'], [np.nanmin(norm), np.nanmax(norm)], [0, 1])
         elif cfg.performance_normalize is not None:
             raise ValueError
         logger.debug('Normalize data... DONE')
-
-        d_delta_i.append(rmse_models)
-        if cfg.obsdata:
-            d_delta_q.append(rmse_obs)
+        diagnostics_all.append(diagnostics)
 
     # import xarray as xr
     # models, ensembles = np.array(
@@ -446,13 +435,22 @@ def calc_predictors(fn, cfg):
     #         'rmse_obs': (('diagnostic', 'model_ensemble'), d_delta_q)})
     # ds.to_netcdf('./plot_scripts/rmse.nc')
 
-    delta_i = np.mean(d_delta_i, axis=0)  # mean over all diagnostics
-    if cfg.obsdata:
-        delta_q = np.mean(d_delta_q, axis=0)  # mean over all diagnostics
-    else:  # if there are not observations delta_i and delta_q are identical!
-        delta_q = delta_i
+    delta_i = np.mean([dd['rmse_models'].data for dd in diagnostics_all], axis=0)
+    delta_i = xr.Dataset(
+        coords={'model_ensemble': diagnostics['model_ensemble']},
+        data_vars={'delta_i': (('model_ensemble', 'model_ensemble'), delta_i)})
 
-    return delta_q, delta_i, lat, lon
+    if cfg.obsdata:
+        delta_q = np.mean([dd['rmse_obs'].data for dd in diagnostics_all], axis=0)
+        delta_q = xr.Dataset(
+            coords={'model_ensemble': diagnostics['model_ensemble']},
+            data_vars={'delta_q': ('model_ensemble', delta_q)})
+    else:  # if there are not observations delta_i and delta_q are identical!
+        delta_q = xr.Dataset(
+            coords={'model_ensemble': diagnostics['model_ensemble']},
+            data_vars={'delta_q': (('model_ensemble', 'model_ensemble'), delta_q)})
+
+    return delta_q['delta_q'].data, delta_i['delta_i'].data  # DEBUG
 
 
 def calc_sigmas(targets, delta_i, lat, lon, fn, cfg, debug=False):
@@ -501,12 +499,13 @@ def calc_sigmas(targets, delta_i, lat, lon, fn, cfg, debug=False):
     sigmas_i = np.linspace(.1*tmp, 1.9*tmp, SIGMA_SIZE)
     # sigmas_i = np.array([.45])  # DEBUG
 
-    models, ensembles = get_filenames(fn, cfg.target_diagnostic, cfg.ensembles, True)
-    assert len(models) == len(targets)
+    model_ensemble = targets['model_ensemble'].data
+    models = [*map(lambda x: x.split('_')[0], model_ensemble)]
     _, idx = np.unique(models, return_index=True)  # index of unique models
-    targets_1ens = targets[idx]
+
+    targets_1ens = targets.isel(model_ensemble=idx)
     delta_i_1ens = delta_i[idx, :][:, idx]
-    targets_1ens_mean = area_weighted_mean(targets_1ens, lat, lon)
+    targets_1ens_mean = area_weighted_mean(targets_1ens).data
 
     weights_sigmas = calculate_weights_sigmas(delta_i_1ens, sigmas_q, sigmas_i)
 
@@ -571,7 +570,7 @@ def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg):
     raise NotImplementedError
 
 
-def save_data(weights, fn, cfg, dtype='nc', data=None, lat=None, lon=None):
+def save_data(weights, fn, cfg, dtype='nc', data=None):
     """Save the given weights to a file.
 
     Parameters
@@ -605,27 +604,13 @@ def save_data(weights, fn, cfg, dtype='nc', data=None, lat=None, lon=None):
 
     if dtype == 'nc':
         from xarray import Dataset, DataArray
-        models, ensembles = get_filenames(fn, cfg.target_diagnostic, cfg.ensembles, True)
-        model_ensemble = [
-            '{}_{}'.format(mm, ee) for mm, ee in zip(models, ensembles)]
+        _, model_ensemble = get_filenames(fn, cfg.target_diagnostic, cfg.ensembles)
         ds = Dataset(
-            coords={
-                'model_ensemble': np.array(model_ensemble)},
-            data_vars={
-                'model': ('model_ensemble', np.array(models)),
-                'ensemble': ('model_ensemble', np.array(ensembles)),
-                'weights': ('model_ensemble', weights)},
-            attrs={
-                'config': cfg.config,
-                'config_path': cfg.config_path})
+            coords={'model_ensemble': np.array(model_ensemble)},
+            data_vars={'weights': ('model_ensemble', weights)},
+            attrs={'config': cfg.config, 'config_path': cfg.config_path})
         if data is not None:
-            da = DataArray(
-                data=data,
-                coords={'model_ensemble': np.array(model_ensemble),
-                        'lat': lat, 'lon': lon},
-                dims=('model_ensemble', 'lat', 'lon'),
-                name=cfg.target_diagnostic)
-            ds[cfg.target_diagnostic] = da
+            ds[cfg.target_diagnostic] = data
         add_hist(ds)
         filename = os.path.join(cfg.save_path, '{}.nc'.format(cfg.config))
         ds.to_netcdf(filename)
@@ -651,8 +636,13 @@ def main():
     targets = calc_target(fn, cfg)
     logger.info('Calculate target diagnostic... DONE')
 
+    # DEBUG
+    lat = targets['lat'].data
+    lon = targets['lon'].data
+    targets = targets[cfg.target_diagnostic]
+
     logger.info('Calculate predictor diagnostics and delta matrix...')
-    delta_q, delta_i, lat, lon = calc_predictors(fn, cfg)
+    delta_q, delta_i = calc_predictors(fn, cfg)
     logger.info('Calculate predictor diagnostics and delta matrix... DONE')
 
     if cfg.sigma_i is None or cfg.sigma_q is None:
@@ -668,7 +658,7 @@ def main():
     logger.info('Calculate weights and weighted mean... DONE')
 
     logger.info('Saving data...')
-    save_data(weights, fn, cfg, data=targets, lat=lat, lon=lon)
+    save_data(weights, fn, cfg, data=targets)
     logger.info('Saving data... DONE')
 
     logger.info('Run program {}... Done'.format(os.path.basename(__file__)))

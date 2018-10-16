@@ -29,6 +29,7 @@ class TestOutputChange(unittest.TestCase):
     def test_output(self):
         ds = xr.open_dataset('./data/new/test_new.nc')
         ds_ref = xr.open_dataset('./data/reference/test_reference.nc')
+        del ds['time']
 
         for varn in ds.variables:
             np.testing.assert_array_equal(
