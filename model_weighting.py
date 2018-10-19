@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-19 14:42:56 lukbrunn>
+Time-stamp: <2018-10-19 15:08:14 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -335,33 +335,37 @@ def calc_predictors(fn, cfg):
         for filename, model_ensemble in zip(*get_filenames(fn, varn, cfg.ensembles)):
             logger.debug('Calculate diagnostics for {}...'.format(model_ensemble))
 
-            if derived and diagn == 'tasclt':
-                filename_diag = calc_CORR(infile=filename,
-                                          base_path=base_path,
-                                          variable1=varn,
-                                          variable2='tas',
-                                          masko=cfg.predictor_masko[idx],
-                                          syear=cfg.predictor_startyears[idx],
-                                          eyear=cfg.predictor_endyears[idx],
-                                          season=cfg.predictor_seasons[idx],
-                                          region=cfg.region,
-                                          overwrite=cfg.overwrite)
-            else:
-                filename_template = os.path.join(
-                    base_path, os.path.basename(filename))
-                filename_template = filename_template.replace('.nc', '')
+            try:
+                if derived and diagn == 'tasclt':
+                    filename_diag = calc_CORR(infile=filename,
+                                              base_path=base_path,
+                                              variable1=varn,
+                                              variable2='tas',
+                                              masko=cfg.predictor_masko[idx],
+                                              syear=cfg.predictor_startyears[idx],
+                                              eyear=cfg.predictor_endyears[idx],
+                                              season=cfg.predictor_seasons[idx],
+                                              region=cfg.region,
+                                              overwrite=cfg.overwrite)
+                else:
+                    filename_template = os.path.join(
+                        base_path, os.path.basename(filename))
+                    filename_template = filename_template.replace('.nc', '')
 
-                filename_diag = calc_diag(infile=filename,
-                                          outname=filename_template,
-                                          diagnostic=diagn,
-                                          variable=varn,
-                                          masko=cfg.predictor_masko[idx],
-                                          syear=cfg.predictor_startyears[idx],
-                                          eyear=cfg.predictor_endyears[idx],
-                                          season=cfg.predictor_seasons[idx],
-                                          kind=cfg.predictor_aggs[idx],
-                                          region=cfg.region,
-                                          overwrite=cfg.overwrite)
+                    filename_diag = calc_diag(infile=filename,
+                                              outname=filename_template,
+                                              diagnostic=diagn,
+                                              variable=varn,
+                                              masko=cfg.predictor_masko[idx],
+                                              syear=cfg.predictor_startyears[idx],
+                                              eyear=cfg.predictor_endyears[idx],
+                                              season=cfg.predictor_seasons[idx],
+                                              kind=cfg.predictor_aggs[idx],
+                                              region=cfg.region,
+                                              overwrite=cfg.overwrite)
+            except Exception as exc:
+                logger.error('Exception at model: {}'.format(model_ensemble))
+                raise exc
 
             diagnostic = xr.open_dataset(filename_diag)
             diagnostic = diagnostic.squeeze('time')
@@ -461,10 +465,6 @@ def calc_predictors(fn, cfg):
     # take the mean over all diagnostics and write them into a now Dataset
     # TODO: somehow xr.concat(diganostics_all) does not work -> fix it?
     delta_i = np.mean([dd['rmse_models'].data for dd in diagnostics_all], axis=0)
-    delta_i = xr.Dataset(
-        coords={'model_ensemble': diagnostics['model_ensemble']},
-        data_vars={'delta_i': (('model_ensemble', 'model_ensemble'), delta_i)})
-
     if cfg.obsdata:
         delta_q = np.mean([dd['rmse_obs'].data for dd in diagnostics_all], axis=0)
         delta_q = xr.Dataset(
@@ -474,6 +474,10 @@ def calc_predictors(fn, cfg):
         delta_q = xr.Dataset(
             coords={'model_ensemble': diagnostics['model_ensemble']},
             data_vars={'delta_q': (('model_ensemble', 'model_ensemble'), delta_i)})
+
+    delta_i = xr.Dataset(
+        coords={'model_ensemble': diagnostics['model_ensemble']},
+        data_vars={'delta_i': (('model_ensemble', 'model_ensemble'), delta_i)})
 
     # --- optional plot output for consistency checks ---
     if cfg.plot:
