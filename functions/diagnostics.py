@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-12 09:55:44 lukbrunn>
+Time-stamp: <2018-10-19 11:39:41 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -193,8 +193,6 @@ def calc_diag(infile,
             cdo.setmissval(1e20, input=tmpfile2, output=tmpfile)
 
         # (3) change some units if necessary
-        # TODO: is this really something that should be done here?
-        # TODO: what is the effect of this/why do we need this?
         if variable == 'pr' and  unit == 'kg m-2 s-1':
             newunit = "mm/day"
             cdo.mulc(24*60*60, input=tmpfile, output=tmpfile2)
@@ -212,10 +210,17 @@ def calc_diag(infile,
                 cdo.chunit('"1",%s' %(newunit), input=tmpfile2, output=tmpfile)
             else:
                 logger.warning('Unit {} for variable {} not covered!'.format(unit, variable))
-        elif variable in ['tas', 'tasmax', 'tasmin', 'tos'] and unit == 'K':
-            newunit = "degC"
-            cdo.subc(273.15, options='-b F64', input=tmpfile, output=tmpfile2)
-            cdo.chunit('"K",%s' %(newunit), input=tmpfile2, output=tmpfile)
+        elif variable in ['tas', 'tasmax', 'tasmin', 'tos']:
+            if unit == 'K':
+                newunit = "degC"
+                cdo.subc(273.15, options='-b F64', input=tmpfile, output=tmpfile2)
+                cdo.chunit('"K",%s' %(newunit), input=tmpfile2, output=tmpfile)
+            elif unit.lower() in ['degc', 'deg_c', 'celsius', 'degreec',
+                                  'degree_c', 'degree_celsius']:
+                # https://ferret.pmel.noaa.gov/Ferret/documentation/udunits.dat
+                pass
+            else:
+                raise ValueError('No valid unit found for temperature')
 
         if variable == 'tos':
             cdo.setvrange('0,40', input=tmpfile, output=tmpfile2)
