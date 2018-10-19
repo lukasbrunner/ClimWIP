@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-16 18:12:58 lukbrunn>
+Time-stamp: <2018-10-19 14:42:56 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -37,19 +37,25 @@ import logging
 import argparse
 import numpy as np
 import xarray as xr
-import netCDF4 as nc
 
 from utils_python import utils
-# from utils_python.physics import area_weighted_mean
 from utils_python.get_filenames import Filenames
-from utils_python.xarray import add_hist, area_weighted_mean
+from utils_python.xarray import add_hist, area_weighted_mean, get_variable_name
 
-from functions.diagnostics import calc_diag, calc_CORR
-from functions.percentile import perfect_model_test
-from functions.weights import calculate_weights_sigmas, calculate_weights
+# I still don't understand how to properly do this :(
+# https://stackoverflow.com/questions/14132789/relative-imports-for-the-billionth-time
+if __name__ == '__main__':
+    from functions.diagnostics import calc_diag, calc_CORR
+    from functions.percentile import perfect_model_test
+    from functions.weights import calculate_weights_sigmas, calculate_weights
+    from functions.plots import plot_rmse, plot_maps
+else:
+    from model_weighting.functions.diagnostics import calc_diag, calc_CORR
+    from model_weighting.functions.percentile import perfect_model_test
+    from model_weighting.functions.weights import calculate_weights_sigmas, calculate_weights
+    from model_weighting.functions.plots import plot_rmse, plot_maps
 
 logger = logging.getLogger(__name__)
-
 
 DERIVED = {
     'tasclt': ['clt', 'tas'],
@@ -57,6 +63,21 @@ DERIVED = {
     'ef': ['hfls', 'hfss'],
     'dtr': ['tasmax', 'tasmin']
 }
+
+
+def test_config(cfg):
+    """Some basic consistency tests for the config input"""
+    if len({len(cfg[key]) for key in cfg.keys() if 'predictor' in key}) != 1:
+        errmsg = 'All predictor_* variables need to have same length'
+        raise ValueError(errmsg)
+    # if not os.access(cfg.save_path, os.W_OK | os.X_OK):
+    #     errmsg = 'save_path is not writable'
+    #     raise ValueError(errmsg)
+    # if (cfg.plot_path is not None and
+    #     not os.access(cfg.plot_path, os.W_OK | os.X_OK)):
+    #     errmsg = 'plot_path is not wriable'
+    #     raise ValueError(errmsg)
+
 
 
 def read_config():
@@ -73,6 +94,7 @@ def read_config():
     args = parser.parse_args()
     cfg = utils.read_config(args.config, args.filename)
     utils.log_parser(cfg)
+    test_config(cfg)
     return cfg
 
 
@@ -131,7 +153,14 @@ def get_filenames(fn, varn, all_members=True):
             assert len(ff) == 1, 'len(ff) should be one!'
             filenames += (ff[0],)
 
-    logger.info('{} files found.'.format(len(filenames)))
+    if len(filenames) < 20 and cfg.sigma_q is None:
+        # perfect model test will not work with too few models!
+        logmsg = ' '.join([
+            'Only {} files found (perfect model test will probably not work',
+            'with too few models!']).format(len(filenames))
+        logger.warning(logmsg)
+    else:
+        logger.info('{} files found.'.format(len(filenames)))
     logger.debug(', '.join(model_ensemble))
     return filenames, model_ensemble
 
@@ -284,7 +313,8 @@ def calc_predictors(fn, cfg):
     diagnostics_all = []
     data_all = []
     for idx, diagn in enumerate(cfg.predictor_diagnostics):
-        logger.info('Calculate diagnostics for {}...'.format(diagn))
+        logger.info('Calculate diagnostics for {} {}...'.format(
+            diagn, cfg.predictor_aggs[idx]))
 
         base_path = os.path.join(
             cfg.save_path, diagn, cfg.freq,
@@ -341,11 +371,7 @@ def calc_predictors(fn, cfg):
             logger.debug('Calculate diagnostics for file {}... DONE'.format(filename))
         diagnostics = xr.concat(diagnostics, dim='model_ensemble')  # merge to one Dataset
 
-        # TODO: handle variable names in a more elegant way
-        # TODO: this is connected to the handling of derived variables!
-        varn = list(set(diagnostics.variables).difference(diagnostics.coords))
-        assert len(varn) == 1
-        varn = varn[0]
+        varn = get_variable_name(diagnostics)
 
         logger.debug('Calculate model independence matrix...')
         diagnostics['rmse_models'] = xr.DataArray(
@@ -359,7 +385,7 @@ def calc_predictors(fn, cfg):
                     diagnostics['rmse_models'].data[ii, jj] = diagnostics['rmse_models'].data[jj, ii]
                 else:
                     diagnostics['rmse_models'].data[ii, jj] = np.sqrt(area_weighted_mean(
-                        (diagnostic1 - diagnostic2)**2))
+                        (diagnostic1 - diagnostic2)**2, latn='lat', lonn='lon'))
         logger.debug('Calculate independence matrix... DONE')
 
         if cfg.obsdata is not None:
@@ -397,44 +423,43 @@ def calc_predictors(fn, cfg):
 
         logger.debug('Normalize data...')
 
-        norm = diagnostics['rmse_models'].data
+        normalizer = diagnostics['rmse_models'].data
         if cfg.obsdata:
-            norm = np.concatenate([norm, [diagnostics['rmse_obs'].data]], axis=0)
+            # TODO: the difference in including this is probably minor
+            # think about what it actually means to include this here
+            normalizer = np.concatenate([normalizer, [diagnostics['rmse_obs'].data]], axis=0)
 
         if cfg.performance_normalize.lower() == 'median':
-            diagnostics['rmse_models'] /= np.nanmedian(norm)
-            if cfg.obsdata:
-                diagnostics['rmse_obs'] /= np.nanmedian(norm)
+            normalizer = np.nanmedian(normalizer)
         elif cfg.performance_normalize.lower() == 'mean':
-            diagnostics['rmse_models'] /= np.nanmean(norm)
-            if cfg.obsdata:
-                diagnostics['rmse_obs'] /= np.nanmean(norm)
+             normalizer = np.nanmean(normalizer)
         elif cfg.performance_normalize.lower() == 'map':  # TODO: needs testing!
-            diagnostics['rmse_models'] = np.interp(
-                 diagnostics['rmse_models'], [np.nanmin(norm), np.nanmax(norm)], [0, 1])
-            if cfg.obsdata:
-                diagnostics['rmse_obs'] = np.interp(
-                    diagnostics['rmse_obs'], [np.nanmin(norm), np.nanmax(norm)], [0, 1])
-        elif cfg.performance_normalize is not None:
+            normalizer = np.interp(
+                 diagnostics['rmse_models'], [np.nanmin(normalizer), np.nanmax(normalizer)], [0, 1])
+        elif cfg.performance_normalize is None:
+            normalizer = 1.
+        else:
             raise ValueError
+
+        diagnostics['rmse_models'] /= normalizer
+        if cfg.obsdata:
+            diagnostics['rmse_obs'] /= normalizer
         logger.debug('Normalize data... DONE')
         diagnostics_all.append(diagnostics)
 
-    # import xarray as xr
-    # models, ensembles = np.array(
-    #     fn.get_filenames(subset={'varn': cfg.target_diagnostic},
-    #                      return_filters=['model', 'ensemble'])).swapaxes(0, 1)[:2]
-    # model_ensemble = ['{}_{}'.format(mm, ee) for mm, ee in zip(models, ensembles)]
-    # ds = xr.Dataset(
-    #     coords={'model_ensemble': model_ensemble,
-    #             'model_ensemble2': model_ensemble},
-    #     data_vars={
-    #         'model': ('model_ensemble', models),
-    #         'ensemble': ('model_ensemble', ensembles),
-    #         'rmse_mod': (('diagnostic', 'model_ensemble', 'model_ensemble2'), d_delta_i),
-    #         'rmse_obs': (('diagnostic', 'model_ensemble'), d_delta_q)})
-    # ds.to_netcdf('./plot_scripts/rmse.nc')
+        # --- optional plot output for consistency checks ---
+        if cfg.plot:
+            plotn = plot_rmse(diagnostics['rmse_models'], idx, cfg,
+                              diagnostics['rmse_obs'] if cfg.obsdata else None)
+            plot_maps(diagnostics, idx, cfg)
 
+            add_hist(diagnostics)
+            diagnostics.to_netcdf(plotn + '.nc')  # also save the data
+            logger.debug('Saved plot data: {}.nc'.format(plotn))
+        # ---------------------------------------------------
+
+    # take the mean over all diagnostics and write them into a now Dataset
+    # TODO: somehow xr.concat(diganostics_all) does not work -> fix it?
     delta_i = np.mean([dd['rmse_models'].data for dd in diagnostics_all], axis=0)
     delta_i = xr.Dataset(
         coords={'model_ensemble': diagnostics['model_ensemble']},
@@ -448,7 +473,13 @@ def calc_predictors(fn, cfg):
     else:  # if there are not observations delta_i and delta_q are identical!
         delta_q = xr.Dataset(
             coords={'model_ensemble': diagnostics['model_ensemble']},
-            data_vars={'delta_q': (('model_ensemble', 'model_ensemble'), delta_q)})
+            data_vars={'delta_q': (('model_ensemble', 'model_ensemble'), delta_i)})
+
+    # --- optional plot output for consistency checks ---
+    if cfg.plot:
+        plot_rmse(delta_i['delta_i'], 'mean', cfg,
+                  delta_q['delta_q'] if cfg.obsdata else None)
+    # ---------------------------------------------------
 
     return delta_q['delta_q'].data, delta_i['delta_i'].data  # DEBUG
 
@@ -505,7 +536,7 @@ def calc_sigmas(targets, delta_i, lat, lon, fn, cfg, debug=False):
 
     targets_1ens = targets.isel(model_ensemble=idx)
     delta_i_1ens = delta_i[idx, :][:, idx]
-    targets_1ens_mean = area_weighted_mean(targets_1ens).data
+    targets_1ens_mean = area_weighted_mean(targets_1ens, latn='lat', lonn='lon').data
 
     weights_sigmas = calculate_weights_sigmas(delta_i_1ens, sigmas_q, sigmas_i)
 
@@ -518,6 +549,8 @@ def calc_sigmas(targets, delta_i, lat, lon, fn, cfg, debug=False):
                                       perc_lower=cfg.percentiles[0],
                                       perc_upper=cfg.percentiles[1])
 
+    if cfg.inside_ratio is None:
+        cfg.inside_ratio = cfg.percentiles[1] - cfg.percentiles[0]
     inside_ok = inside_ratio >= cfg.inside_ratio
 
     # in this matrix (i, j) find the element with the smallest sum i+j
@@ -660,6 +693,10 @@ def main():
     logger.info('Saving data...')
     save_data(weights, fn, cfg, data=targets)
     logger.info('Saving data... DONE')
+
+    if cfg.plot:
+        logger.info('Plots are at: {}'.format(
+            os.path.join(cfg.plot_path, cfg.config)))
 
     logger.info('Run program {}... Done'.format(os.path.basename(__file__)))
 
