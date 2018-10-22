@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-19 11:28:53 lukbrunn>
+Time-stamp: <2018-10-22 14:24:13 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -84,6 +84,59 @@ def plot_rmse(da, idx, cfg, da2=None):
     plt.clf()
     logger.debug('Saved plot: {}.png'.format(filename))
     return filename
+
+
+def plot_fraction_matrix(xx, yy, data, cfg, idx=None, title=''):
+    """
+    Matrix plot of the perfect model test result.
+
+    Parameters
+    ----------
+    xx : array_like, shape (N,)
+    yy : array_like, shape (M,)
+    data : array_like, shape (M, N)
+    cfg : object
+    idx : tuple of two int
+        idx gives the position of the selected sigma values as dot
+    title : string, optional
+    """
+    boundaries = np.arange(.2, 1., .1)
+    cmap = plt.cm.get_cmap('viridis',len(boundaries))
+    colors = list(cmap(np.arange(len(boundaries))))
+    cmap = mpl.colors.ListedColormap(colors, "")
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+
+    im = ax.matshow(
+        data, cmap=cmap,
+        norm=mpl.colors.BoundaryNorm(
+            boundaries,
+            ncolors=len(boundaries)-1,
+            clip=False))
+
+    ax.set_xticks(np.arange(len(xx)))
+    ax.set_yticks(np.arange(len(yy)))
+    ax.set_xticklabels(['{:.2f}'.format(x) for x in xx])
+    plt.xticks(rotation=90)
+    ax.set_yticklabels(['{:.2f}'.format(y) for y in yy])
+    ax.set_xlabel('Independence parameter $\sigma_{i}$', fontsize='large', pad=2)
+    ax.set_ylabel('Performance parameter $\sigma_{q}$', fontsize='large', pad=2)
+
+    if idx is not None:
+        ax.scatter(idx[0], idx[1], s=1, color='k')
+
+    ax.set_title(title, fontsize='x-large', pad=20)
+
+    fig.colorbar(im, ax=ax, fraction=.046, pad=.04)
+
+    path = os.path.join(cfg.plot_path, cfg.config)
+    os.makedirs(path, exist_ok=True)
+    filename = os.path.join(path, 'inside_ratio.png')
+    plt.savefig(filename, dpi=300)
+    plt.clf()
+    logger.debug('Saved plot: {}'.format(filename))
+    return filename
+
 
 
 def plot_maps(ds, idx, cfg):

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-22 11:15:57 lukbrunn>
+Time-stamp: <2018-10-22 14:18:07 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -48,12 +48,12 @@ if __name__ == '__main__':
     from functions.diagnostics import calc_diag, calc_CORR
     from functions.percentile import perfect_model_test
     from functions.weights import calculate_weights_sigmas, calculate_weights
-    from functions.plots import plot_rmse, plot_maps
+    from functions.plots import plot_rmse, plot_maps, plot_fraction_matrix
 else:
     from model_weighting.functions.diagnostics import calc_diag, calc_CORR
     from model_weighting.functions.percentile import perfect_model_test
     from model_weighting.functions.weights import calculate_weights_sigmas, calculate_weights
-    from model_weighting.functions.plots import plot_rmse, plot_maps
+    from model_weighting.functions.plots import plot_rmse, plot_maps, plot_fraction_matrix
 
 logger = logging.getLogger(__name__)
 
@@ -594,6 +594,13 @@ def calc_sigmas(targets, delta_i, cfg, debug=False):
 
     logger.info('sigma_q: {:.4f}; sigma_i: {:.4f}'.format(
         sigmas_q[idx_q_min], sigmas_i[idx_i_min]))
+
+    if cfg.plot:
+        plot_fraction_matrix(
+            sigmas_i, sigmas_q, inside_ratio, cfg, (idx_i_min, idx_q_min),
+            'Fraction of models within {} to {} percentile'.format(
+                *cfg.percentiles))
+
     return sigmas_q[idx_q_min], sigmas_i[idx_i_min]
 
 
