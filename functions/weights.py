@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-16 11:40:06 lukbrunn>
+Time-stamp: <2018-10-19 18:30:58 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -38,6 +38,8 @@ def calculate_weights(quality, independence, sigma_q, sigma_i, debug=False):
     assert quality.shape == independence.shape[:1], errmsg
     assert isinstance(sigma_q, float), 'sigma_q needs to by of type float'
     assert isinstance(sigma_i, float), 'sigma_i needs to by of type float'
+    assert np.all(np.isnan(np.diagonal(independence))), '(i, i) should be nan'
+    assert np.isnan(quality).sum() <= 1, 'should have maximal one nan'
 
     numerator = np.exp(-((quality/sigma_q)**2))
     exp = np.exp(-((independence/sigma_i)**2))
