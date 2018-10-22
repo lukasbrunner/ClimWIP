@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-22 09:28:08 lukbrunn>
+Time-stamp: <2018-10-22 11:15:57 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -555,10 +555,11 @@ def calc_sigmas(targets, delta_i, cfg, debug=False):
     model_ensemble = targets['model_ensemble'].data
     models = [*map(lambda x: x.split('_')[0], model_ensemble)]
     _, idx = np.unique(models, return_index=True)  # index of unique models
+    model_ensemble_1ens = model_ensemble[idx]
 
-    targets_1ens = targets.isel(model_ensemble=idx)
-    delta_i_1ens = delta_i.isel(model_ensemble=idx).isel(
-        perfect_model_ensemble=idx).data
+    targets_1ens = targets.sel(model_ensemble=model_ensemble_1ens)
+    delta_i_1ens = delta_i.sel(model_ensemble=model_ensemble_1ens).sel(
+        perfect_model_ensemble=model_ensemble_1ens).data
     targets_1ens_mean = area_weighted_mean(targets_1ens, latn='lat', lonn='lon').data
 
     weights_sigmas = calculate_weights_sigmas(delta_i_1ens, sigmas_q, sigmas_i)
@@ -591,7 +592,7 @@ def calc_sigmas(targets, delta_i, cfg, debug=False):
             index_sum = idx_i + idx_q
             idx_i_min, idx_q_min = idx_i, idx_q
 
-    logger.info('sigma_q: {}; sigma_i: {}'.format(
+    logger.info('sigma_q: {:.4f}; sigma_i: {:.4f}'.format(
         sigmas_q[idx_q_min], sigmas_i[idx_i_min]))
     return sigmas_q[idx_q_min], sigmas_i[idx_i_min]
 
@@ -632,22 +633,24 @@ def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg):
 
     ds = delta_q.to_dataset().copy(data={'delta_q': weights})
     ds = ds.rename({'delta_q': 'weights'})
+    ds['delta_q'] = delta_q
+    ds['delta_i'] = delta_i
+    ds['sigma_q'] = xr.DataArray([sigma_q])
+    ds['sigma_i'] = xr.DataArray([sigma_i])
     return ds
 
 
-def save_data(weights, cfg, dtype='nc'):
-    """Save the given weights to a file.
+def save_data(ds, cfg, dtype='nc'):
+    """Save the given Dataset to a file.
 
     Parameters
     ----------
-    weights : xarray.Dataset
-        Dataset containing the weights
+    ds : xarray.Dataset
+        Dataset to save
     cfg : object
         A config object.
     dtype : {'nc', 'json'}, optional
         String giving a valid file type.
-    data : xarray.DataArray, optional
-        If given also save data in the same file
 
     Returns
     -------
@@ -656,13 +659,13 @@ def save_data(weights, cfg, dtype='nc'):
     dtype = dtype.replace('.', '').lower()
 
     if dtype == 'nc':
-        weights.attrs.update({'config': cfg.config, 'config_path': cfg.config_path})
-        add_hist(weights)
+        ds.attrs.update({'config': cfg.config, 'config_path': cfg.config_path})
+        add_hist(ds)
         filename = os.path.join(cfg.save_path, '{}.nc'.format(cfg.config))
-        weights.to_netcdf(filename)
+        ds.to_netcdf(filename)
         logger.info('Saved file: {}'.format(filename))
     elif dtype == 'json':
-        raise NotImplementedError
+        raise NotImplementedError('Output for .json files not yet implemented')
 
 
 def main():
