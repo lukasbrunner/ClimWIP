@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-19 11:39:41 lukbrunn>
+Time-stamp: <2018-10-22 14:26:10 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -238,7 +238,7 @@ def calc_diag(infile,
         # -> STD is NOT the standard deviation from CLIM!
         if kind == 'CLIM' and season == 'ANN':
             cdo.yearmean(input=filename_global, output=tmpfile)
-            cdo.timmean(input=tmpfile2, output=filename_global_kind)  # save output
+            cdo.timmean(input=tmpfile, output=filename_global_kind)  # save output
         elif kind == 'CLIM':
             cdo.seasmean(input=filename_global, output=tmpfile)
             cdo.yseasmean(input=tmpfile, output=filename_global_kind)  # save output
