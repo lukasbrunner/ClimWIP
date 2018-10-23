@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-22 14:26:10 lukbrunn>
+Time-stamp: <2018-10-23 14:14:08 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -204,9 +204,9 @@ def calc_diag(infile,
             cdo.mulc(1000, options='-b 64', input=tmpfile, output=tmpfile2)
             if unit == 'kg/kg':
                 cdo.chunit('"kg/kg",%s' %(newunit), input=tmpfile2, output=tmpfile)
-            if unit == 'kg kg-1':
+            elif unit == 'kg kg-1':
                 cdo.chunit('"kg kg-1",%s' %(newunit), input=tmpfile2, output=tmpfile)
-            if unit == '1':
+            elif unit == '1':
                 cdo.chunit('"1",%s' %(newunit), input=tmpfile2, output=tmpfile)
             else:
                 logger.warning('Unit {} for variable {} not covered!'.format(unit, variable))
