@@ -2,13 +2,14 @@ strictness: medium
 doc-warnings: true
 
 ignore-paths:
-  - docs
   - cdo_data
-  - tests
   - configs
+  - docs
+  - functions
   - plot_scripts
-  - LICENSE
+  - tests
   - __init__.py
+  - LICENSE
 
 pylint:
   disable:

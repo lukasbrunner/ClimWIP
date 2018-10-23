@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-16 11:40:06 lukbrunn>
+Time-stamp: <2018-10-22 13:55:17 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -38,6 +38,8 @@ def calculate_weights(quality, independence, sigma_q, sigma_i, debug=False):
     assert quality.shape == independence.shape[:1], errmsg
     assert isinstance(sigma_q, float), 'sigma_q needs to by of type float'
     assert isinstance(sigma_i, float), 'sigma_i needs to by of type float'
+    assert np.all(np.isnan(np.diagonal(independence))), '(i, i) should be nan'
+    assert np.isnan(quality).sum() <= 1, 'should have maximal one nan'
 
     numerator = np.exp(-((quality/sigma_q)**2))
     exp = np.exp(-((independence/sigma_i)**2))
@@ -51,16 +53,20 @@ def calculate_weights(quality, independence, sigma_q, sigma_i, debug=False):
 def calculate_weights_sigmas(distances, sigmas_q, sigmas_i):
     """Calculates the weights for each model N and combination of sigma values.
 
-    Parameters:
-    - distances (np.array): (N, N) array specifying the distances between
-      each model.
-    - sigmas_q (np.array): (M,) array of possible sigma values for the
-      weighting function of the quality.
-    - sigmas_i (np.array): (L,) array of possible sigma values for the
-      weighting function of the independence.
+    Parameters
+    ----------
+    distances : array_like, shape (N, N)
+        Array specifying the distances between each model.
+    sigmas_q : array_like, shape (M,)
+        Array of sigma values for the weighting function of the quality.
+    sigmas_i : array_like, shape (L,)
+        Array of sigma values for the weighting function of the independence.
 
-    Returns:
-    weights (M, L, N)"""
+    Returns
+    -------
+    weights : ndarray, shape (M, L, N)
+        Array of weights for each model and sigma combination.
+    """
     ss = distances.shape
     assert len(ss) == 2, 'distances needs to be a 2D array'
     assert ss[0] == ss[1], 'distances needs to be of shape (N, N)'

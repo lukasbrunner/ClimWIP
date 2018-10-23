@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-19 11:39:41 lukbrunn>
+Time-stamp: <2018-10-22 14:26:10 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 

@@ -108,3 +108,8 @@ ENV/
 
 # mypy
 .mypy_cache/
+
+# non-default config files
+/configs
+!/configs/config_default.ini
+!/configs/config_test_versions.ini
