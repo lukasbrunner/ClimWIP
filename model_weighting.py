@@ -37,6 +37,7 @@ import logging
 import argparse
 import numpy as np
 import xarray as xr
+import copy
 
 from utils_python import utils
 from utils_python.get_filenames import Filenames
@@ -70,13 +71,13 @@ def test_config(cfg):
     if len({len(cfg[key]) for key in cfg.keys() if 'predictor' in key}) != 1:
         errmsg = 'All predictor_* variables need to have same length'
         raise ValueError(errmsg)
-    # if not os.access(cfg.save_path, os.W_OK | os.X_OK):
-    #     errmsg = 'save_path is not writable'
-    #     raise ValueError(errmsg)
-    # if (cfg.plot_path is not None and
-    #     not os.access(cfg.plot_path, os.W_OK | os.X_OK)):
-    #     errmsg = 'plot_path is not wriable'
-    #     raise ValueError(errmsg)
+    if not os.access(cfg.save_path, os.W_OK | os.X_OK):
+        errmsg = 'save_path is not writable'
+        raise ValueError(errmsg)
+    if (cfg.plot_path is not None and
+        not os.access(cfg.plot_path, os.W_OK | os.X_OK)):
+        errmsg = 'plot_path is not wriable'
+        raise ValueError(errmsg)
 
 
 
@@ -132,13 +133,15 @@ def get_filenames(fn, varn, all_members=True):
                 'scenario': scenario,
                 'model': model,
                 'varn': fn.get_variable_values('varn')})
+        ensembles_select = copy.copy(ensembles)
         for ensemble in ensembles:
             if ensemble not in ensembles_all:
                 logmsg = ' '.join([
                     'Removed {} from {} (not available for all',
                     'variables)']).format(ensemble, model)
                 logger.warning(logmsg)
-                ensembles.remove(ensemble)
+                ensembles_select.remove(ensemble)
+        ensembles = copy.copy(ensembles_select)
 
         assert len(ensembles) >= 1
         if not all_members:
