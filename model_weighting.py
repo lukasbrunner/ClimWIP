@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-23 15:13:27 lukbrunn>
+Time-stamp: <2018-10-23 17:02:47 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -720,7 +720,7 @@ def main():
         sigma_q, sigma_i = calc_sigmas(targets, delta_i, cfg)
         logger.info('Calculate sigmas... DONE')
     else:
-        sigma_q, sigma_i = cfg.sigma_i, cfg.sigma_q
+        sigma_q, sigma_i = cfg.sigma_q, cfg.sigma_i
         logger.info('Using user sigmas: {}, {}'.format(sigma_i, sigma_q))
 
     logger.info('Calculate weights and weighted mean...')
