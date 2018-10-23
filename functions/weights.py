@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-22 13:55:17 lukbrunn>
+Time-stamp: <2018-10-23 10:39:08 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -19,7 +19,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
-def calculate_weights(quality, independence, sigma_q, sigma_i, debug=False):
+def calculate_weights(quality, independence, sigma_q, sigma_i):
     """Calculates the (NOT normalised) weights for each model N.
 
     Parameters:
@@ -45,9 +45,7 @@ def calculate_weights(quality, independence, sigma_q, sigma_i, debug=False):
     exp = np.exp(-((independence/sigma_i)**2))
     sum_exp = [np.sum(np.delete(ee, ii)) for ii, ee in enumerate(exp)]  # sum i!=j
     denominator = 1 + np.array(sum_exp)
-    if debug:
-        return numerator, denominator
-    return numerator/denominator
+    return numerator, denominator
 
 
 def calculate_weights_sigmas(distances, sigmas_q, sigmas_i):
@@ -78,7 +76,8 @@ def calculate_weights_sigmas(distances, sigmas_q, sigmas_i):
         for idx_i, sigma_i in enumerate(sigmas_i):
             for idx_d, dd in enumerate(distances):
                 # dd is the distance of each model to the idx_d-th model (='Truth')
-                ww = calculate_weights(dd, distances, sigma_q, sigma_i)
+                nn, dd = calculate_weights(dd, distances, sigma_q, sigma_i)
+                ww = nn/dd
                 assert np.isnan(ww[idx_d]), 'weight for model dd should be nan'
                 ww[idx_d] = 0.  # set weight=0 to exclude the 'True' model
                 assert ww.sum() != 0, 'weights = 0! sigma_q too small?'

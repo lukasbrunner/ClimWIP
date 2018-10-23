@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-22 14:18:07 lukbrunn>
+Time-stamp: <2018-10-23 14:38:11 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -48,13 +48,21 @@ from utils_python.xarray import add_hist, area_weighted_mean, get_variable_name
 if __name__ == '__main__':
     from functions.diagnostics import calc_diag, calc_CORR
     from functions.percentile import perfect_model_test
-    from functions.weights import calculate_weights_sigmas, calculate_weights
-    from functions.plots import plot_rmse, plot_maps, plot_fraction_matrix
+    from functions.weights import (calculate_weights_sigmas,
+                                   calculate_weights)
+    from functions.plots import (plot_rmse,
+                                 plot_maps,
+                                 plot_fraction_matrix,
+                                 plot_weights)
 else:
     from model_weighting.functions.diagnostics import calc_diag, calc_CORR
     from model_weighting.functions.percentile import perfect_model_test
-    from model_weighting.functions.weights import calculate_weights_sigmas, calculate_weights
-    from model_weighting.functions.plots import plot_rmse, plot_maps, plot_fraction_matrix
+    from model_weighting.functions.weights import (calculate_weights_sigmas,
+                                                   calculate_weights)
+    from model_weighting.functions.plots import (plot_rmse,
+                                                 plot_maps,
+                                                 plot_fraction_matrix,
+                                                 plot_weights)
 
 logger = logging.getLogger(__name__)
 
@@ -469,6 +477,7 @@ def calc_predictors(fn, cfg):
         logger.debug('Normalize data... DONE')
         diagnostics_all.append(diagnostics)
 
+
         # --- optional plot output for consistency checks ---
         if cfg.plot:
             plotn = plot_rmse(diagnostics['rmse_models'], idx, cfg,
@@ -550,7 +559,7 @@ def calc_sigmas(targets, delta_i, cfg, debug=False):
     # since we know that there is one model with 10 members, the larges element should be about
     # 10x the smallest one!
     sigmas_i = np.linspace(.1*tmp, 1.9*tmp, SIGMA_SIZE)
-    # sigmas_i = np.array([.45])  # DEBUG
+    # sigmas_i = np.array([tmp])  # DEBUG
 
     model_ensemble = targets['model_ensemble'].data
     models = [*map(lambda x: x.split('_')[0], model_ensemble)]
@@ -630,20 +639,28 @@ def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg):
         An array of weights
     """
     if cfg.obsdata:
-        weights = calculate_weights(delta_q, delta_i, sigma_q, sigma_i)
+        numerator, denominator = calculate_weights(delta_q, delta_i, sigma_q, sigma_i)
+        weights = numerator/denominator
         weights /=  weights.sum()
     else:  # in this case delta_q is a matrix for each model as truth once
         calculate_weights_matrix = np.vectorize(
-            calculate_weights, signature='(n)->(n)', excluded=[1, 2, 3])
-        weights = calculate_weights_matrix(delta_q, delta_i, sigma_q, sigma_i)
+            calculate_weights, signature='(n)->(n)(n)', excluded=[1, 2, 3])
+        numerator, denominator = calculate_weights_matrix(delta_q, delta_i, sigma_q, sigma_i)
+        weights = numerator/denominator
         weights /= np.nansum(weights, axis=-1)
 
-    ds = delta_q.to_dataset().copy(data={'delta_q': weights})
+    ds = delta_q.to_dataset().copy()
     ds = ds.rename({'delta_q': 'weights'})
+    ds['weights'].data = weights
     ds['delta_q'] = delta_q
     ds['delta_i'] = delta_i
     ds['sigma_q'] = xr.DataArray([sigma_q])
     ds['sigma_i'] = xr.DataArray([sigma_i])
+
+    if cfg.plot:
+        plot_weights(ds, cfg, numerator, denominator)
+        plot_weights(ds, cfg, numerator, denominator, sort=True)
+
     return ds
 
 
