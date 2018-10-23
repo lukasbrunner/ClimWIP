@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-23 15:07:17 lukbrunn>
+Time-stamp: <2018-10-23 15:13:27 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -561,7 +561,7 @@ def calc_sigmas(targets, delta_i, cfg, debug=False):
     # since we know that there is one model with 10 members, the larges element should be about
     # 10x the smallest one!
     sigmas_i = np.linspace(.1*tmp, 1.9*tmp, SIGMA_SIZE)
-    sigmas_i = np.array([tmp])  # DEBUG
+    # sigmas_i = np.array([tmp])  # DEBUG
 
     model_ensemble = targets['model_ensemble'].data
     models = [*map(lambda x: x.split('_')[0], model_ensemble)]
