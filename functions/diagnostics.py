@@ -204,9 +204,9 @@ def calc_diag(infile,
             cdo.mulc(1000, options='-b 64', input=tmpfile, output=tmpfile2)
             if unit == 'kg/kg':
                 cdo.chunit('"kg/kg",%s' %(newunit), input=tmpfile2, output=tmpfile)
-            if unit == 'kg kg-1':
+            elif unit == 'kg kg-1':
                 cdo.chunit('"kg kg-1",%s' %(newunit), input=tmpfile2, output=tmpfile)
-            if unit == '1':
+            elif unit == '1':
                 cdo.chunit('"1",%s' %(newunit), input=tmpfile2, output=tmpfile)
             else:
                 logger.warning('Unit {} for variable {} not covered!'.format(unit, variable))
@@ -238,7 +238,7 @@ def calc_diag(infile,
         # -> STD is NOT the standard deviation from CLIM!
         if kind == 'CLIM' and season == 'ANN':
             cdo.yearmean(input=filename_global, output=tmpfile)
-            cdo.timmean(input=tmpfile2, output=filename_global_kind)  # save output
+            cdo.timmean(input=tmpfile, output=filename_global_kind)  # save output
         elif kind == 'CLIM':
             cdo.seasmean(input=filename_global, output=tmpfile)
             cdo.yseasmean(input=tmpfile, output=filename_global_kind)  # save output
