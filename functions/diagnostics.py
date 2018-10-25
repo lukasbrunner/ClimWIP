@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-23 14:14:08 lukbrunn>
+Time-stamp: <2018-10-25 09:52:09 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -209,7 +209,7 @@ def calc_diag(infile,
             elif unit == '1':
                 cdo.chunit('"1",%s' %(newunit), input=tmpfile2, output=tmpfile)
             else:
-                logger.warning('Unit {} for variable {} not covered!'.format(unit, variable))
+                raise ValueError('Unit {} for variable {} not covered!'.format(unit, variable))
         elif variable in ['tas', 'tasmax', 'tasmin', 'tos']:
             if unit == 'K':
                 newunit = "degC"
