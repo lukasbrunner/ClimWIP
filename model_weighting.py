@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-23 17:02:47 lukbrunn>
+Time-stamp: <2018-10-25 09:58:12 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -514,8 +514,12 @@ def calc_predictors(fn, cfg):
 
     # --- optional plot output for consistency checks ---
     if cfg.plot:
-        plot_rmse(delta_i['delta_i'], 'mean', cfg,
-                  delta_q['delta_q'] if cfg.obsdata else None)
+        plotn = plot_rmse(delta_i['delta_i'], 'mean', cfg,
+                          delta_q['delta_q'] if cfg.obsdata else None)
+
+        add_hist(diagnostics)
+        diagnostics.to_netcdf(plotn + '.nc')  # also save the data
+        logger.debug('Saved plot data: {}.nc'.format(plotn))
     # ---------------------------------------------------
 
     return delta_q['delta_q'], delta_i['delta_i']
@@ -721,13 +725,13 @@ def main():
         logger.info('Calculate sigmas... DONE')
     else:
         sigma_q, sigma_i = cfg.sigma_q, cfg.sigma_i
-        logger.info('Using user sigmas: {}, {}'.format(sigma_i, sigma_q))
+        logger.info('Using user sigmas: q={}, i={}'.format(sigma_q, sigma_i))
 
     logger.info('Calculate weights and weighted mean...')
     weights = calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg)
     logger.info('Calculate weights and weighted mean... DONE')
 
-    weights[cfg.target_diagnostic] = targets  # NOTE: also save target variable
+    weights[cfg.target_diagnostic] = targets  # also save targets
 
     logger.info('Saving data...')
     save_data(weights, cfg)
