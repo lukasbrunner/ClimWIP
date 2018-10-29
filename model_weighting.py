@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-25 09:58:12 lukbrunn>
+Time-stamp: <2018-10-29 15:09:55 lukas>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -484,7 +484,10 @@ def calc_predictors(fn, cfg):
         if cfg.plot:
             plotn = plot_rmse(diagnostics['rmse_models'], idx, cfg,
                               diagnostics['rmse_obs'] if cfg.obsdata else None)
-            plot_maps(diagnostics, idx, cfg)
+            if cfg.obsdata:
+                plot_maps(diagnostics, idx, cfg, obs=obs)
+            else:
+                plot_maps(diagnostics, idx, cfg)
 
             add_hist(diagnostics)
             diagnostics.to_netcdf(plotn + '.nc')  # also save the data
@@ -606,6 +609,10 @@ def calc_sigmas(targets, delta_i, cfg, debug=False):
         if idx_i + idx_q < index_sum:
             index_sum = idx_i + idx_q
             idx_i_min, idx_q_min = idx_i, idx_q
+
+    if idx_i_min is None:
+        logger.error('No optimal sigma values found')
+        import ipdb; ipdb.set_trace()
 
     logger.info('sigma_q: {:.4f}; sigma_i: {:.4f}'.format(
         sigmas_q[idx_q_min], sigmas_i[idx_i_min]))
