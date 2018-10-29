@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-25 09:52:09 lukbrunn>
+Time-stamp: <2018-10-25 17:15:58 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -25,6 +25,7 @@ cdo = Cdo()
 
 logger = logging.getLogger(__name__)
 REGION_DIR = '{}/../cdo_data/'.format(os.path.dirname(__file__))
+MASK = 'land_sea_mask_regionsmask.nc'  # 'seamask_g025.nc'
 
 
 def calc_Rnet(infile, outname, variable, derived=True, workdir=None):
@@ -160,11 +161,10 @@ def calc_diag(infile,
         # - the first operation takes the original input an creates 'tmpfile'
         # - all subsequent operations (except the last) take either 'tmpfile'
         #   and create 'tmpfile2' or vice versa
-        # - the last operation takes 'tmpfile(2)' and creates the output file
+        # - the last operation takes the active tmpfile and creates the output
         # ----------------------
         tmpfile = os.path.join(tmpdir, 'temp.nc')
         tmpfile2 = os.path.join(tmpdir, 'temp2.nc')
-
 
         # (1) cut temporal and spatial domains first for performance reasons
         # move the anti-meridian to the Pacific
@@ -178,7 +178,7 @@ def calc_diag(infile,
 
         # (1b) need to remap ERA-Interim to the model grid
         if 'ERA-Interim' in infile:
-            cdo.remapbic(os.path.join(REGION_DIR, 'seamask_g025.nc'),
+            cdo.remapbic(os.path.join(REGION_DIR, MASK),
                          options='-b F64',
                          input=tmpfile,
                          output=tmpfile2)
@@ -186,7 +186,7 @@ def calc_diag(infile,
 
         # (2) mask ocean if necessary
         if masko:
-            filename_mask = os.path.join(REGION_DIR, 'seamask_g025.nc')
+            filename_mask = os.path.join(REGION_DIR, MASK)
             cdo.setmissval(0,
                            input="-mul -eqc,1 %s %s" %(filename_mask, tmpfile),
                            output=tmpfile2)
