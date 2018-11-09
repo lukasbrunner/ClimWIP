@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-25 17:15:58 lukbrunn>
+Time-stamp: <2018-10-29 17:19:15 lukas>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -72,6 +72,98 @@ def calc_Rnet(infile, outname, variable, derived=True, workdir=None):
     cdo.chname('%s,rnet' %(variable), input = rnetfile,
                output = outfile)
     return outfile
+
+
+def cut_domain(tmpfile, tmpfil2, season, mask_ocean=True, time_period=None, remap=False):
+    cdo.sellonlatbox(-180, 180, -90, 90, input=tmpfile, output=tmpfile2)
+    os.rename(tmpfile2, tmpfile)
+
+    if time_period is not None:
+        cdo.seldate('{}-01-01,{}-12-31'.format(*time_period),
+                    input=tmpfile, output=tmpfile2)
+        os.rename(tmpfile2, tmpfile)
+
+    if season != 'ANN':
+        cdo.selseas(season, input=tmpfile, output=tmpfile2)
+        os.rename(tmpfile2, tmpfile)
+
+    if rempap:
+        cdo.remapbic(os.path.join(REGION_DIR, MASK),
+                     options='-b F64',
+                     input=tmpfile,
+                     output=tmpfile2)
+        os.rename(tmpfile2, tmpfile)
+
+    if mask_ocean:
+        filename_mask = os.path.join(REGION_DIR, MASK)
+        cdo.setmissval(0,
+                       input="-mul -eqc,1 %s %s" %(filename_mask, tmpfile),
+                       output=tmpfile2)
+        cdo.setmissval(1e20, input=tmpfile2, output=tmpfile)
+
+    return tmpfile
+
+
+def standardize_units(tmpfile, tmpfile2, varn):
+    # get the variable unit
+    da = xr.open_dataset(tmpfile)[varn]
+    if 'units' in da.attrs.keys():
+        unit = ds.attrs['units']
+    else:
+        logmsg = 'units attribute not found for {}'.format(varn)
+        logger.warning(logmsg)
+        return tmpfile
+
+    # --- precipitation ---
+    if variable == 'pr':
+        newunit = "mm/day"
+        if unit == 'kg m-2 s-1':
+            cdo.mulc(24*60*60, input=tmpfile, output=tmpfile2)
+            cdo.chunit('"kg m-2 s-1",%s' %(newunit),
+                       input=tmpfile2,
+                       output=tmpfile)
+        elif unit == newunit:
+            pass
+        else:
+            logmsg = 'Unit {} not covered for {}'.format(unit, varn)
+            raise ValueError(logmsg)
+
+    # --- ---
+    elif variable == 'huss':
+        newunit = "g/kg"
+        cdo.mulc(1000, options='-b 64', input=tmpfile, output=tmpfile2)
+        if unit == 'kg/kg':
+            cdo.chunit('"kg/kg",%s' %(newunit), input=tmpfile2, output=tmpfile)
+        elif unit == 'kg kg-1':
+            cdo.chunit('"kg kg-1",%s' %(newunit), input=tmpfile2, output=tmpfile)
+        elif unit == '1':
+            cdo.chunit('"1",%s' %(newunit), input=tmpfile2, output=tmpfile)
+        elif unit == newunit:
+            pass
+        else:
+            logmsg = 'Unit {} not covered for {}!'.format(unit, varn)
+            raise ValueError(logmsg)
+
+    # --- temperature ---
+    elif variable in ['tas', 'tasmax', 'tasmin', 'tos']:
+        newunit = "degC"
+        if unit == 'K':
+            cdo.subc(273.15, options='-b F64', input=tmpfile, output=tmpfile2)
+            cdo.chunit('"K",%s' %(newunit), input=tmpfile2, output=tmpfile)
+        elif unit.lower() in ['degc', 'deg_c', 'celsius', 'degreec',
+                              'degree_c', 'degree_celsius']:
+            # https://ferret.pmel.noaa.gov/Ferret/documentation/udunits.dat
+            pass
+        else:
+            logmsg = 'Unit {} not covered for {}'.format(unit, varn)
+            raise ValueError(logmsg)
+
+    if variable == 'tos':
+        cdo.setvrange('0,40', input=tmpfile, output=tmpfile2)
+        os.rename(tmpfile2, tmpfile)
+
+    return tmpfile
+
 
 def calc_diag(infile,
               outname,
@@ -150,11 +242,6 @@ def calc_diag(infile,
             raise NotImplementedError('Only Rnet implemented so far')
         infile = derived_file
 
-    # read infile and get units of variable
-    fh = nc.Dataset(infile, mode = 'r')
-    unit = fh.variables[variable].units
-    fh.close()
-
     with TemporaryDirectory(dir='/net/h2o/climphys/tmp') as tmpdir:
         # ----------------------
         # NOTE: cdo operations require different input/output files.
@@ -166,68 +253,14 @@ def calc_diag(infile,
         tmpfile = os.path.join(tmpdir, 'temp.nc')
         tmpfile2 = os.path.join(tmpdir, 'temp2.nc')
 
-        # (1) cut temporal and spatial domains first for performance reasons
-        # move the anti-meridian to the Pacific
-        cdo.sellonlatbox(-180, 180, -90, 90, input=infile, output=tmpfile)
-        cdo.seldate('{}-01-01,{}-12-31'.format(syear, eyear),
-                    input=tmpfile, output=tmpfile2)
-        if season != 'ANN':
-            cdo.selseas(season, input=tmpfile2, output=tmpfile)
-        else:
-            os.rename(tmpfile2, tmpfile)
-
-        # (1b) need to remap ERA-Interim to the model grid
-        if 'ERA-Interim' in infile:
-            cdo.remapbic(os.path.join(REGION_DIR, MASK),
-                         options='-b F64',
-                         input=tmpfile,
-                         output=tmpfile2)
-            os.rename(tmpfile2, tmpfile)
-
-        # (2) mask ocean if necessary
-        if masko:
-            filename_mask = os.path.join(REGION_DIR, MASK)
-            cdo.setmissval(0,
-                           input="-mul -eqc,1 %s %s" %(filename_mask, tmpfile),
-                           output=tmpfile2)
-            cdo.setmissval(1e20, input=tmpfile2, output=tmpfile)
-
-        # (3) change some units if necessary
-        if variable == 'pr' and  unit == 'kg m-2 s-1':
-            newunit = "mm/day"
-            cdo.mulc(24*60*60, input=tmpfile, output=tmpfile2)
-            cdo.chunit('"kg m-2 s-1",%s' %(newunit),
-                       input=tmpfile2,
-                       output=tmpfile)
-        elif variable == 'huss':
-            newunit = "g/kg"
-            cdo.mulc(1000, options='-b 64', input=tmpfile, output=tmpfile2)
-            if unit == 'kg/kg':
-                cdo.chunit('"kg/kg",%s' %(newunit), input=tmpfile2, output=tmpfile)
-            elif unit == 'kg kg-1':
-                cdo.chunit('"kg kg-1",%s' %(newunit), input=tmpfile2, output=tmpfile)
-            elif unit == '1':
-                cdo.chunit('"1",%s' %(newunit), input=tmpfile2, output=tmpfile)
-            else:
-                raise ValueError('Unit {} for variable {} not covered!'.format(unit, variable))
-        elif variable in ['tas', 'tasmax', 'tasmin', 'tos']:
-            if unit == 'K':
-                newunit = "degC"
-                cdo.subc(273.15, options='-b F64', input=tmpfile, output=tmpfile2)
-                cdo.chunit('"K",%s' %(newunit), input=tmpfile2, output=tmpfile)
-            elif unit.lower() in ['degc', 'deg_c', 'celsius', 'degreec',
-                                  'degree_c', 'degree_celsius']:
-                # https://ferret.pmel.noaa.gov/Ferret/documentation/udunits.dat
-                pass
-            else:
-                raise ValueError('No valid unit found for temperature')
-
-        if variable == 'tos':
-            cdo.setvrange('0,40', input=tmpfile, output=tmpfile2)
-            os.rename(tmpfile2, tmpfile)
+        cut_domain(tmpfile, tmpfile2, season,
+                   mask_ocean=masko,
+                   time_period=(syear, eyear),
+                   rempap='ERA-Interim' in infile)
+        standardize_units(tmpfile, tmpfile2, varn)
 
         # -- done with first part, save global time series & delete tmpfiles --
-        cdo.copy(input=tmpfile, output=filename_global)
+        cdo.copy(input=tmpfile, output=filename_global) # save output
         os.remove(tmpfile)
         if os.path.isfile(tmpfile2):
             os.remove(tmpfile2)
@@ -257,10 +290,10 @@ def calc_diag(infile,
 
             cdo.sellonlatbox(lonmin,lonmax,latmin,latmax,
                              input=filename_global,
-                             output=filename_region)
+                             output=filename_region)  # save output
             cdo.sellonlatbox(lonmin,lonmax,latmin,latmax,
                              input=filename_global_kind,
-                             output=filename_region_kind)
+                             output=filename_region_kind)  # save output
 
     if region == 'GLOBAL':
         if kind is None:
