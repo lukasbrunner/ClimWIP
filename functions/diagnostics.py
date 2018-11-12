@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-25 17:15:58 lukbrunn>
+Time-stamp: <2018-11-09 16:30:53 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -249,7 +249,7 @@ def calc_diag(infile,
             cdo.regres(input=filename_global, output=filename_global_kind) # save output
 
         if region != 'GLOBAL':
-            mask = np.loadtxt('%s/%s.txt' %(REGION_DIR, region))
+            mask = np.loadtxt('{}.txt'.format(os.path.join(REGION_DIR, region)))
             lonmax = np.max(mask[:, 0])
             lonmin = np.min(mask[:, 0])
             latmax = np.max(mask[:, 1])
@@ -434,7 +434,7 @@ def calc_CORR(infile,
         cdo.setvrange('-1,1', input=tmpfile, output=filename_global_kind)
 
     if region != 'GLOBAL':
-        mask = np.loadtxt('%s/%s.txt' %(REGION_DIR, region))
+        mask = np.loadtxt('{}.txt'.format(os.path.join(REGION_DIR, region)))
         lonmax = np.max(mask[:, 0])
         lonmin = np.min(mask[:, 0])
         latmax = np.max(mask[:, 1])
