@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-29 15:11:33 lukas>
+Time-stamp: <2018-11-12 21:44:48 lukas>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -186,8 +186,9 @@ def plot_maps(ds, idx, cfg, obs=None):
         longitude_formatter = LongitudeFormatter()
         latitude_formatter = LatitudeFormatter()
 
-        ax.set_xticks(np.arange(ds['lon'].min()-5, ds['lon'].max()+11, 10), crs=proj)
-        ax.set_yticks(np.arange(ds['lat'].min()-5, ds['lat'].max()+11, 10), crs=proj)
+        # TODO: comment in again if I cut regions and not only mask them
+        # ax.set_xticks(np.arange(ds['lon'].min()-5, ds['lon'].max()+11, 10), crs=proj)
+        # ax.set_yticks(np.arange(ds['lat'].min()-5, ds['lat'].max()+11, 10), crs=proj)
         ax.xaxis.set_ticks_position('both')
         ax.yaxis.set_ticks_position('both')
         ax.xaxis.set_major_formatter(longitude_formatter)

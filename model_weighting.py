@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-29 15:09:55 lukas>
+Time-stamp: <2018-11-12 21:31:24 lukas>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -45,7 +45,7 @@ from utils_python.xarray import add_hist, area_weighted_mean, get_variable_name
 # I still don't understand how to properly do this :(
 # https://stackoverflow.com/questions/14132789/relative-imports-for-the-billionth-time
 if __name__ == '__main__':
-    from functions.diagnostics import calc_diag, calc_CORR
+    from functions.diagnostics import calculate_diagnostic
     from functions.percentile import perfect_model_test
     from functions.weights import (calculate_weights_sigmas,
                                    calculate_weights)
@@ -54,7 +54,7 @@ if __name__ == '__main__':
                                  plot_fraction_matrix,
                                  plot_weights)
 else:
-    from model_weighting.functions.diagnostics import calc_diag, calc_CORR
+    from model_weighting.functions.diagnostics import calculate_diagnostic
     from model_weighting.functions.percentile import perfect_model_test
     from model_weighting.functions.weights import (calculate_weights_sigmas,
                                                    calculate_weights)
@@ -66,10 +66,10 @@ else:
 logger = logging.getLogger(__name__)
 
 DERIVED = {
-    'tasclt': ['clt', 'tas'],
-    'rnet': ['rlus', 'rsds', 'rlds', 'rsus'],
-    'ef': ['hfls', 'hfss'],
-    'dtr': ['tasmax', 'tasmin']
+    'tasclt': ('clt', 'tas'),
+    'rnet': ('rlus', 'rsds', 'rlds', 'rsus'),
+    'ef': ('hfls', 'hfss'),
+    'dtr': ('tasmax', 'tasmin')
 }
 
 
@@ -254,38 +254,28 @@ def calc_target(fn, cfg):
     targets = []
     for filename, model_ensemble in zip(*get_filenames(fn, cfg.target_diagnostic, cfg.ensembles)):
         logger.debug('Calculate diagnostics for {}...'.format(model_ensemble))
-        filename_template = os.path.join(base_path, os.path.basename(filename))
-        filename_template = filename_template.replace('.nc', '')
 
         try:  # if calculation of diagnostic fails return current model
-            filename_diag = calc_diag(infile=filename,
-                                      outname=filename_template,
-                                      diagnostic=cfg.target_diagnostic,
-                                      masko=cfg.target_masko,
-                                      syear=cfg.target_startyear,  # future
-                                      eyear=cfg.target_endyear,
-                                      season=cfg.target_season,
-                                      kind=cfg.target_agg,
-                                      region=cfg.region,
-                                      overwrite=cfg.overwrite)
-            target = xr.open_dataset(filename_diag)
-            target = target.squeeze('time')
-
-            if cfg.target_startyear_ref is not None:
-                filename_diag = calc_diag(infile=filename,
-                                          outname=filename_template,
-                                          diagnostic=cfg.target_diagnostic,
-                                          masko=cfg.target_masko,
-                                          syear=cfg.target_startyear_ref,  # historical
-                                          eyear=cfg.target_endyear_ref,
+            target = calculate_diagnostic(filename, cfg.target_diagnostic, base_path,
+                                          time_period=(cfg.target_startyear,
+                                                       cfg.target_endyear),
                                           season=cfg.target_season,
-                                          kind=cfg.target_agg,
+                                          time_aggregation=cfg.target_agg,
+                                          mask_ocean=cfg.target_masko,
                                           region=cfg.region,
                                           overwrite=cfg.overwrite)
 
-                target_hist = xr.open_dataset(filename_diag)
-                target_hist = target_hist.squeeze('time')
-                target[cfg.target_diagnostic] -= target_hist[cfg.target_diagnostic]
+            if cfg.target_startyear_ref is not None:
+                target_hist = calculate_diagnostic(filename, cfg.target_diagnostic, base_path,
+                                                   time_period=(cfg.target_startyear_ref,
+                                                                cfg.target_endyear_ref),
+                                                   season=cfg.target_season,
+                                                   time_aggregation=cfg.target_agg,
+                                                   mask_ocean=cfg.target_masko,
+                                                   region=cfg.region,
+                                                   overwrite=cfg.overwrite)
+
+                target[cfg.target_diagnostic] -= target_hist[cfg.target_diagnostic]  # change historical to future
 
         except Exception as exc:
             logger.error('Exception at model: {}'.format(model_ensemble))
@@ -341,61 +331,35 @@ def calc_predictors(fn, cfg):
             'masked' if cfg.predictor_masko[idx] else 'unmasked')
         os.makedirs(base_path, exist_ok=True)
 
-        derived = diagn in DERIVED.keys()
-        if derived:
-            varn = DERIVED[diagn][0]
-        else:
-            varn = diagn
-
-        # if derived:
-        #     filename_matrix = [get_filenames(fn, varn, cfg.ensembles)[0]
-        #                        for varn in DERIVED[diagn]]
+        # if its a derived diagnostic: get first basic variable to get one of
+        # the filenames (the others will be created by replacement)
+        varn = DERIVED[diagn][0] if diagn in DERIVED.keys() else diagn
 
         diagnostics = []
         for filename, model_ensemble in zip(*get_filenames(fn, varn, cfg.ensembles)):
             logger.debug('Calculate diagnostics for {}...'.format(model_ensemble))
 
-            try:  # if calculation of diagnostic fails return current model
-                if derived and diagn == 'tasclt':
-                    filename_diag = calc_CORR(infile=filename,
-                                              base_path=base_path,
-                                              variable1=varn,
-                                              variable2='tas',
-                                              masko=cfg.predictor_masko[idx],
-                                              syear=cfg.predictor_startyears[idx],
-                                              eyear=cfg.predictor_endyears[idx],
-                                              season=cfg.predictor_seasons[idx],
-                                              region=cfg.region,
-                                              overwrite=cfg.overwrite)
-                else:
-                    filename_template = os.path.join(
-                        base_path, os.path.basename(filename))
-                    filename_template = filename_template.replace('.nc', '')
+            if diagn in DERIVED.keys():
+                diagn = {diagn: DERIVED[diagn]}
 
-                    filename_diag = calc_diag(infile=filename,
-                                              outname=filename_template,
-                                              diagnostic=diagn,
-                                              variable=varn,
-                                              masko=cfg.predictor_masko[idx],
-                                              syear=cfg.predictor_startyears[idx],
-                                              eyear=cfg.predictor_endyears[idx],
-                                              season=cfg.predictor_seasons[idx],
-                                              kind=cfg.predictor_aggs[idx],
-                                              region=cfg.region,
-                                              overwrite=cfg.overwrite)
+            try:
+                diagnostic = calculate_diagnostic(filename, diagn, base_path,
+                                                  time_period=(cfg.predictor_startyears[idx],
+                                                               cfg.predictor_endyears[idx]),
+                                                  season=cfg.predictor_seasons[idx],
+                                                  time_aggregation=cfg.predictor_aggs[idx],
+                                                  mask_ocean=cfg.predictor_masko[idx],
+                                                  region=cfg.region,
+                                                  overwrite=cfg.overwrite)
             except Exception as exc:
                 logger.error('Exception at model: {}'.format(model_ensemble))
                 raise exc
 
-            diagnostic = xr.open_dataset(filename_diag)
-            diagnostic = diagnostic.squeeze('time')
             diagnostic['model_ensemble'] = xr.DataArray(
                 [model_ensemble], dims='model_ensemble')
             diagnostics.append(diagnostic)
             logger.debug('Calculate diagnostics for file {}... DONE'.format(filename))
         diagnostics = xr.concat(diagnostics, dim='model_ensemble')  # merge to one Dataset
-
-        varn = get_variable_name(diagnostics)
 
         # TODO: move this to after if cfg.obsdata
         # -> get mask from obs and apply same mask to models first!
@@ -421,34 +385,30 @@ def calc_predictors(fn, cfg):
                 cfg.obs_path, '{}_mon_{}_g025.nc'.format(
                     varn, cfg.obsdata))
 
-            base_path = os.path.join(
-                cfg.save_path, diagn, cfg.freq,
-                'masked' if cfg.predictor_masko[idx] else 'unmasked')
-            os.makedirs(base_path, exist_ok=True)
-            filename_template = os.path.join(
-                    base_path, os.path.basename(filename))
-            filename_template = filename_template.replace('.nc', '')
+            # base_path = os.path.join(
+            #     cfg.save_path, diagn, cfg.freq,
+            #     'masked' if cfg.predictor_masko[idx] else 'unmasked')
+            # os.makedirs(base_path, exist_ok=True)
+            # filename_template = os.path.join(
+            #         base_path, os.path.basename(filename))
+            # filename_template = filename_template.replace('.nc', '')
 
             try:
-                filename_obs = calc_diag(infile=filename,
-                                         outname=filename_template,
-                                         diagnostic=diagn,
-                                         variable=varn,
-                                         masko=cfg.predictor_masko[idx],
-                                         syear=cfg.predictor_startyears[idx],
-                                         eyear=cfg.predictor_endyears[idx],
-                                         season=cfg.predictor_seasons[idx],
-                                         kind=cfg.predictor_aggs[idx],
-                                         region=cfg.region,
-                                         overwrite=cfg.overwrite)
+                obs = calculate_diagnostic(filename, diagn, base_path,
+                                           time_period=(cfg.predictor_startyears[idx],
+                                                        cfg.predictor_endyears[idx]),
+                                           season=cfg.predictor_seasons[idx],
+                                           time_aggregation=cfg.predictor_aggs[idx],
+                                           mask_ocean=cfg.predictor_masko[idx],
+                                           region=cfg.region,
+                                           overwrite=cfg.overwrite,
+                                           regrid=True)
             except Exception as exc:
                 logger.error('Exception at observations: {}'.format(filename))
                 raise exc
 
-            obs = xr.open_dataset(filename_obs)
-            obs = obs.squeeze('time')
             diagnostics['rmse_obs'] = np.sqrt(area_weighted_mean(
-                    (diagnostics[varn] - obs[varn])**2))
+                    (diagnostics[diagn] - obs[diagn])**2))
             logger.debug('Read observations & calculate model quality... DONE')
 
         logger.debug('Normalize data...')

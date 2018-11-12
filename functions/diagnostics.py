@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-29 17:19:15 lukas>
+Time-stamp: <2018-11-12 21:52:34 lukas>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -15,17 +15,20 @@ Abstract:
 """
 import os
 import logging
+import warnings
 import regionmask
 import numpy as np
 import xarray as xr
-import netCDF4 as nc
-from tempfile import TemporaryDirectory
+# import salem  # TODO: could use the roi function to cut regions
 from cdo import Cdo
 cdo = Cdo()
+
+from utils_python.xarray import select_region, flip_antimeridian
 
 logger = logging.getLogger(__name__)
 REGION_DIR = '{}/../cdo_data/'.format(os.path.dirname(__file__))
 MASK = 'land_sea_mask_regionsmask.nc'  # 'seamask_g025.nc'
+unit_save = None
 
 
 def calc_Rnet(infile, outname, variable, derived=True, workdir=None):
@@ -74,304 +77,203 @@ def calc_Rnet(infile, outname, variable, derived=True, workdir=None):
     return outfile
 
 
-def cut_domain(tmpfile, tmpfil2, season, mask_ocean=True, time_period=None, remap=False):
-    cdo.sellonlatbox(-180, 180, -90, 90, input=tmpfile, output=tmpfile2)
-    os.rename(tmpfile2, tmpfile)
-
-    if time_period is not None:
-        cdo.seldate('{}-01-01,{}-12-31'.format(*time_period),
-                    input=tmpfile, output=tmpfile2)
-        os.rename(tmpfile2, tmpfile)
-
-    if season != 'ANN':
-        cdo.selseas(season, input=tmpfile, output=tmpfile2)
-        os.rename(tmpfile2, tmpfile)
-
-    if rempap:
-        cdo.remapbic(os.path.join(REGION_DIR, MASK),
-                     options='-b F64',
-                     input=tmpfile,
-                     output=tmpfile2)
-        os.rename(tmpfile2, tmpfile)
-
-    if mask_ocean:
-        filename_mask = os.path.join(REGION_DIR, MASK)
-        cdo.setmissval(0,
-                       input="-mul -eqc,1 %s %s" %(filename_mask, tmpfile),
-                       output=tmpfile2)
-        cdo.setmissval(1e20, input=tmpfile2, output=tmpfile)
-
-    return tmpfile
-
-
-def standardize_units(tmpfile, tmpfile2, varn):
-    # get the variable unit
-    da = xr.open_dataset(tmpfile)[varn]
+def standardize_units(da, varn):
     if 'units' in da.attrs.keys():
-        unit = ds.attrs['units']
+        unit = da.attrs['units']
+        attrs = da.attrs
     else:
         logmsg = 'units attribute not found for {}'.format(varn)
         logger.warning(logmsg)
-        return tmpfile
+        return None
 
     # --- precipitation ---
-    if variable == 'pr':
-        newunit = "mm/day"
+    if varn == 'pr':
+        newunit = 'mm/day'
         if unit == 'kg m-2 s-1':
-            cdo.mulc(24*60*60, input=tmpfile, output=tmpfile2)
-            cdo.chunit('"kg m-2 s-1",%s' %(newunit),
-                       input=tmpfile2,
-                       output=tmpfile)
+            da.data *= 24*60*60
+            da.attrs = attrs
+            da.attrs['units'] = newunit
         elif unit == newunit:
             pass
         else:
             logmsg = 'Unit {} not covered for {}'.format(unit, varn)
-            raise ValueError(logmsg)
-
-    # --- ---
-    elif variable == 'huss':
-        newunit = "g/kg"
-        cdo.mulc(1000, options='-b 64', input=tmpfile, output=tmpfile2)
-        if unit == 'kg/kg':
-            cdo.chunit('"kg/kg",%s' %(newunit), input=tmpfile2, output=tmpfile)
-        elif unit == 'kg kg-1':
-            cdo.chunit('"kg kg-1",%s' %(newunit), input=tmpfile2, output=tmpfile)
-        elif unit == '1':
-            cdo.chunit('"1",%s' %(newunit), input=tmpfile2, output=tmpfile)
-        elif unit == newunit:
-            pass
-        else:
-            logmsg = 'Unit {} not covered for {}!'.format(unit, varn)
             raise ValueError(logmsg)
 
     # --- temperature ---
-    elif variable in ['tas', 'tasmax', 'tasmin', 'tos']:
+    elif varn in ['tas', 'tasmax', 'tasmin', 'tos']:
         newunit = "degC"
         if unit == 'K':
-            cdo.subc(273.15, options='-b F64', input=tmpfile, output=tmpfile2)
-            cdo.chunit('"K",%s' %(newunit), input=tmpfile2, output=tmpfile)
+            da.data -= 273.15
+            da.attrs = attrs
+            da.attrs['units'] = newunit
         elif unit.lower() in ['degc', 'deg_c', 'celsius', 'degreec',
                               'degree_c', 'degree_celsius']:
             # https://ferret.pmel.noaa.gov/Ferret/documentation/udunits.dat
-            pass
+            da.attrs['units'] = newunit
         else:
             logmsg = 'Unit {} not covered for {}'.format(unit, varn)
             raise ValueError(logmsg)
 
-    if variable == 'tos':
-        cdo.setvrange('0,40', input=tmpfile, output=tmpfile2)
-        os.rename(tmpfile2, tmpfile)
+    else:
+        logmsg = 'Variable {} not covered in standardize_units'.format(varn)
+        logger.warning(logmsg)
 
-    return tmpfile
+    return da
 
 
-def calc_diag(infile,
-              outname,
-              diagnostic,
-              masko,
-              syear,
-              eyear,
-              season,
-              region,
-              kind=None,
-              overwrite=False,
-              variable=None,  # TODO: needed?
-              derived=False,  # TODO: needed?
-):
+def calculate_basic_diagnostic(infile, varn, outfile,
+                               time_period=None,
+                               season=None,
+                               time_aggregation=None,
+                               mask_ocean=False,
+                               region=None,
+                               overwrite=False,
+                               regrid=False):
     """
-    TODO: rewrite docstring!
+    Calculate a basic diagnostic from a given file.
 
-    Procedure that calculates diagnostics for weighting method
+    A basic diagnostic calculated from a input file by selecting a given
+    region, time period, and season as well as applying a land-sea mask.
+    Also, the time dimension is aggregated by different methods.
 
-    Parameters:
-    - infile (string): Input filename incl. full path
-    - outname (string): Output filename incl. full path but without extension
-    - diagnostic (string): the diagnostic to be calculated, can be the same as
-                           the variable name but some require extra steps
-    optional:
-    - variable (string): the variable to be processed, for derived diagnostics
-                         one of them to find the files
-    - derived (boolean): standard CMIP variable or derived from other variables?
-    - workdir (string): temporary directory where intermediate files are
-                        stored, default is in same location as script run
-    - masko (boolean): mask ocean or not?
-    - landseamask (string): if masko = True we need the path to a land sea mask
-    - syear (int): the start year if the original file is cut
-    - eyear (int): the end year if the original file is cut
-    - seasons (list of strings): a season JJA, MAM, DJF, SON or ANN for annual,
-                                 if not given all of them calculated
-    - kind (list of strings): what kind of diagnostic to be calculated,
-                              can be CLIM, STD, TREND, CORR, if not given CLIM,
-                              STD and TREND are calculated
-    - region (string): a region name if the region should be cut
-    - areadir (string): a path to the directory where the lat lon of the
-                        regions are stored
-    Returns:
-    str (filename of saved file)
+    Parameters
+    ----------
+    infile : str
+        Full path of the input file. Must contain exactly one non-dimension
+        variable.
+    varn : str
+        The variable contained in infile.
+    outfile : str
+        Full path of the output file. Path must exist.
+    time_period : tuple of two strings, optional
+        Start and end of the time period. Each string must be in the form
+        {"yyyy", "yyyy-mm", "yyyy-mm-dd"}.
+    season : {'JJA', 'SON', 'DJF', 'MAM', 'ANN'}, optional
+    time_aggregation : {'CLIM', 'STD', 'TREND'}, optional
+        Type of time aggregation to use.
+    mask_ocean : bool, optional
+    region : list of strings or str, optional
+        Each string must be a valid SREX region
+    overwrite : bool, optional
+        If True overwrite existing outfiles otherwise read and return them.
+    regrid : bool, optional
+        If True the file will be regridded by cdo.remapbic before opening.
+
+    Returns
+    -------
+    diagnostic : xarray.DataArray
     """
-    filename_global = '{}_{}-{}_{}_GLOBAL.nc'.format(outname, syear, eyear, season)  # TODO: needed?
-    filename_global_kind = '{}_{}-{}_{}_{}_GLOBAL.nc'.format(outname, syear, eyear, season, kind)
-    filename_region = '{}_{}-{}_{}_{}.nc'.format(outname, syear, eyear, season, region)
-    filename_region_kind = '{}_{}-{}_{}_{}_{}.nc'.format(outname, syear, eyear, season, kind, region)
-
-    if not overwrite and (os.path.isfile(filename_global) and
-                          os.path.isfile(filename_global_kind) and
-                          os.path.isfile(filename_region) and
-                          os.path.isfile(filename_region_kind)):
+    if not overwrite and os.path.isfile(outfile):
         logger.debug('Diagnostic already exists & overwrite=False, skipping.')
-        if region == 'GLOBAL':
-            if kind is None:
-                return filename_global
-            return filename_global_kind
+        return xr.open_dataset(outfile)
+
+    if regrid:
+        infile = cdo.remapbic(os.path.join(REGION_DIR, MASK),
+                                options='-b F64', input=infile)
+
+    da = xr.open_dataarray(infile)
+    da = flip_antimeridian(da, to='Pacific')
+    assert da.name == varn
+    assert np.all(da['lat'].data == np.arange(-88.75, 90., 2.5))
+    assert np.all(da['lon'].data == np.arange(-178.75, 180., 2.5))
+
+    if time_period is not None:
+        da = da.sel(time=slice(str(time_period[0]), str(time_period[1])))
+
+    if season in ['JJA', 'SON', 'DJF', 'MAM']:
+        da = da.isel(time=da['time.season']==season)
+    elif season == 'ANN':
+        pass
+    else:
+        raise NotImplementedError('season={}'.format(season))
+
+    if region is not None:
+        if isinstance(region, str):
+            region = [region]
+        masks = []
+        keys = regionmask.defined_regions.srex.map_keys(region)
+        for key in keys:
+            masks.append(
+                regionmask.defined_regions.srex.mask(da) == key)
+        mask = sum(masks) > 0
+        da = da.where(mask)
+        da = da.salem.subset(roi=da)  # TODO: test (but I think this is genius!)
+
+    if mask_ocean:
+        sea_mask = regionmask.defined_regions.natural_earth.land_110.mask(da) == 0
+        da = da.where(sea_mask)
+
+    da = standardize_units(da, varn)
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', message='Mean of empty slice')
+
+        if time_aggregation == 'CLIM':
+            da = da.groupby('time.year').mean('time')
+            da = da.mean('year')
+        elif time_aggregation == 'STD':
+            da = xr.apply_ufunc(scipy.detrend, da,
+                                input_core_dims=[['time']],
+                                output_core_dims=['time'],
+                                keep_attrs=True)
+            da = da.std('time')
+        elif time_aggregation == 'TREND':
+            da = xr.apply_ufunc(scipy.linregress, da,
+                                input_core_dims=[['time']],
+                                output_core_dims=['time'],
+                                keep_attrs=True)
         else:
-            if kind is None:
-                return filename_region
-            return filename_region_kind
+            NotImplementedError('time_aggregation={}'.format(time_aggregation))
 
-    # NOTE: I'm still not sure about the difference between diagnostic and variable
-    if variable is None:
-        variable = diagnostic
+    ds = da.to_dataset(name=varn)
+    ds.to_netcdf(outfile)
+    return ds
 
-    if derived:
-        if diagnostic == 'rnet':
+
+def calculate_diagnostic(infile, diagn, base_path, **kwargs):
+    """
+    Calculate basic or derived diagnostics depending on input.
+
+    Parameters
+    ----------
+    infile : str
+        Full path of the input file. Must contain exactly one non-dimension
+        variable.
+    diagn : str or dict
+        * if str: diagn is assumed to also be a basic variable and will
+          directly be used to call calculate_basic_diagnostic
+        * if dict: diagn has to be exactly one key-value pair with the values
+          representing basic variables and the key representing the name of
+          the newly created diagnostic (e.g., {'tasclt': ['tas', clt']} will
+          calculate the correlation between tas and clt.
+    base_path : str
+        The path in which to save the calculated diagnostic file.
+    kwargs : dict
+        Keyword arguments passed on to calculate_basic_diagnostic.
+
+    Returns
+    -------
+    diagnostic : xarray.DataArray
+    """
+    outfile = os.path.join(
+        base_path,
+        '{infile}_{time_period[0]}-{time_period[1]}_{season}_{time_aggregation}_EUR_3SREX.nc'.format(  # TODO!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            infile=os.path.basename(infile).replace('.nc', ''), **kwargs))
+    if isinstance(diagn, str):  # basic diagnostic
+        return calculate_basic_diagnostic(infile, diagn, outfile, **kwargs)
+    elif isinstance(diagn, dict):  # derived diagnostic
+        assert len(diagn.keys()) == 1
+        key = list(diagn.keys())[0]
+        varns = diagn.pop(key)  # basic variables
+        diagn = key  # derived diagnostic
+
+        if diagn == 'rnet':
             derived_file = calc_Rnet(infile, outname, variable, derived=True)
             outname = outname.replace(variable, 'rnet')
             variable = 'rnet'
             logger.debug(outname)
-        else:
-            raise NotImplementedError('Only Rnet implemented so far')
-        infile = derived_file
-
-    with TemporaryDirectory(dir='/net/h2o/climphys/tmp') as tmpdir:
-        # ----------------------
-        # NOTE: cdo operations require different input/output files.
-        # - the first operation takes the original input an creates 'tmpfile'
-        # - all subsequent operations (except the last) take either 'tmpfile'
-        #   and create 'tmpfile2' or vice versa
-        # - the last operation takes the active tmpfile and creates the output
-        # ----------------------
-        tmpfile = os.path.join(tmpdir, 'temp.nc')
-        tmpfile2 = os.path.join(tmpdir, 'temp2.nc')
-
-        cut_domain(tmpfile, tmpfile2, season,
-                   mask_ocean=masko,
-                   time_period=(syear, eyear),
-                   rempap='ERA-Interim' in infile)
-        standardize_units(tmpfile, tmpfile2, varn)
-
-        # -- done with first part, save global time series & delete tmpfiles --
-        cdo.copy(input=tmpfile, output=filename_global) # save output
-        os.remove(tmpfile)
-        if os.path.isfile(tmpfile2):
-            os.remove(tmpfile2)
-
-        # NOTE: is this an inconsistency?
-        # - Climatology is aggregated as time mean of annual mean (in the case of 'ANN')
-        # - Standard deviation is aggregated directly from the data
-        # -> STD is NOT the standard deviation from CLIM!
-        if kind == 'CLIM' and season == 'ANN':
-            cdo.yearmean(input=filename_global, output=tmpfile)
-            cdo.timmean(input=tmpfile, output=filename_global_kind)  # save output
-        elif kind == 'CLIM':
-            cdo.seasmean(input=filename_global, output=tmpfile)
-            cdo.yseasmean(input=tmpfile, output=filename_global_kind)  # save output
-        elif kind == 'STD':
-            cdo.detrend(input=filename_global, output=tmpfile)
-            cdo.timstd(input=tmpfile, output=filename_global_kind) # save output
-        elif kind == 'TREND':
-            cdo.regres(input=filename_global, output=filename_global_kind) # save output
-
-        if region != 'GLOBAL':
-            mask = np.loadtxt('%s/%s.txt' %(REGION_DIR, region))
-            lonmax = np.max(mask[:, 0])
-            lonmin = np.min(mask[:, 0])
-            latmax = np.max(mask[:, 1])
-            latmin = np.min(mask[:, 1])
-
-            cdo.sellonlatbox(lonmin,lonmax,latmin,latmax,
-                             input=filename_global,
-                             output=filename_region)  # save output
-            cdo.sellonlatbox(lonmin,lonmax,latmin,latmax,
-                             input=filename_global_kind,
-                             output=filename_region_kind)  # save output
-
-    if region == 'GLOBAL':
-        if kind is None:
-            return filename_global
-        return filename_global_kind
-    else:
-        if kind is None:
-            return filename_region
-        return filename_region_kind
-
-def get_mask(da, region, masko):
-    region_mask = False
-    ocean_mask = False
-
-    print('here')
-
-    if masko is not None and masko:
-        ocean_mask = regionmask.defined_regions.natural_earth.land_110.mask(da) == 1
-
-    if region is not None and isinstance(region, str):
-        if region in ['EUR_3SREX']:
-            region = ['NEU', 'CEU', 'MED']
-        region_labels = regionmask.defined_regions.srex.mask(da, wrap_lon=True)
-        region_idxs = regionmask.defined_regions.srex.map_keys(region)
-        region_mask = np.sum([region_labels == idx for idx in region_idxs],
-                             axis=0, dtype=bool)
-    elif region is not None and isinstance(region, tuple):
-        # cut a rectagular shape
-        # might be better anyway because it is faster and I have always
-        # the same (known) grid
-        raise NotImplementedError
-
-    return np.ma.mask_or(ocean_mask, region_mask)
-
-
-def calc_diag_xarray(da, kind, syear, eyear,
-                     region=None,
-                     masko=None,
-                     season=None,
-                     mask_memorized=None):
-
-    assert np.all(da['lat'].data == np.arange(-88.75, 90, 2.5))
-    assert np.all(da['lon'].data == np.arange(1.25, 360, 2.5))
-
-    da = da.sel(time=slice(str(syear), str(eyear)))
-
-    if mask_memorized is not None:
-        assert mask_memorized.shape == da['lat'].shape + da['lon'].shape
-        mask = mask_memorized
-    else:
-        mask = get_mask(da, region, masko)
-
-    if np.any(mask):
-        da = da.where(mask)
-
-    if season in ['JJA', 'SON', 'DJF', 'MAM']:
-        da = da.isel(time=da['time.season']==season)
-    elif season is not None or season != 'ANN':
-        raise NotImplementedError('season={}'.format(season))
-
-    if kind == 'CLIM':
-        da = da.groupby('time.year').mean('time')
-        da = da.mean('year')
-    elif kind == 'STD':
-        da = xr.apply_ufunc(scipy.detrend, da,
-                            input_core_dims=[['time']],
-                            output_core_dims=['time'],
-                            keep_attrs=True)
-        da = da.std('time')
-    elif kind == 'TREND':
-        da = xr.apply_ufunc(scipy.linregress, da,
-                            input_core_dims=[['time']],
-                            output_core_dims=['time'],
-                            keep_attrs=True)
-    else:
-        NotImplementedError('kind={}'.format(kind))
-
-    return da, mask_memorized
+        elif diagn == 'tasclt':
+            calc_diag(infile, diagn, **kwargs)
 
 
 
