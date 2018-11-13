@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-23 14:38:11 lukbrunn>
+Time-stamp: <2018-10-29 15:09:55 lukas>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -283,13 +283,13 @@ def calc_target(fn, cfg):
                                           region=cfg.region,
                                           overwrite=cfg.overwrite)
 
+                target_hist = xr.open_dataset(filename_diag)
+                target_hist = target_hist.squeeze('time')
+                target[cfg.target_diagnostic] -= target_hist[cfg.target_diagnostic]
+
         except Exception as exc:
             logger.error('Exception at model: {}'.format(model_ensemble))
             raise exc
-
-        target_hist = xr.open_dataset(filename_diag)
-        target_hist = target_hist.squeeze('time')
-        target[cfg.target_diagnostic] -= target_hist[cfg.target_diagnostic]
 
         target['model_ensemble'] = xr.DataArray([model_ensemble], dims='model_ensemble')
         targets.append(target)
@@ -477,12 +477,17 @@ def calc_predictors(fn, cfg):
         logger.debug('Normalize data... DONE')
         diagnostics_all.append(diagnostics)
 
+        logger.info('Calculate diagnostics for {} {}... DONE'.format(
+            diagn, cfg.predictor_aggs[idx]))
 
         # --- optional plot output for consistency checks ---
         if cfg.plot:
             plotn = plot_rmse(diagnostics['rmse_models'], idx, cfg,
                               diagnostics['rmse_obs'] if cfg.obsdata else None)
-            plot_maps(diagnostics, idx, cfg)
+            if cfg.obsdata:
+                plot_maps(diagnostics, idx, cfg, obs=obs)
+            else:
+                plot_maps(diagnostics, idx, cfg)
 
             add_hist(diagnostics)
             diagnostics.to_netcdf(plotn + '.nc')  # also save the data
@@ -512,8 +517,12 @@ def calc_predictors(fn, cfg):
 
     # --- optional plot output for consistency checks ---
     if cfg.plot:
-        plot_rmse(delta_i['delta_i'], 'mean', cfg,
-                  delta_q['delta_q'] if cfg.obsdata else None)
+        plotn = plot_rmse(delta_i['delta_i'], 'mean', cfg,
+                          delta_q['delta_q'] if cfg.obsdata else None)
+
+        add_hist(diagnostics)
+        diagnostics.to_netcdf(plotn + '.nc')  # also save the data
+        logger.debug('Saved plot data: {}.nc'.format(plotn))
     # ---------------------------------------------------
 
     return delta_q['delta_q'], delta_i['delta_i']
@@ -600,6 +609,10 @@ def calc_sigmas(targets, delta_i, cfg, debug=False):
         if idx_i + idx_q < index_sum:
             index_sum = idx_i + idx_q
             idx_i_min, idx_q_min = idx_i, idx_q
+
+    if idx_i_min is None:
+        logger.error('No optimal sigma values found')
+        import ipdb; ipdb.set_trace()
 
     logger.info('sigma_q: {:.4f}; sigma_i: {:.4f}'.format(
         sigmas_q[idx_q_min], sigmas_i[idx_i_min]))
@@ -718,14 +731,14 @@ def main():
         sigma_q, sigma_i = calc_sigmas(targets, delta_i, cfg)
         logger.info('Calculate sigmas... DONE')
     else:
-        sigma_q, sigma_i = cfg.sigma_i, cfg.sigma_q
-        logger.info('Using user sigmas: {}, {}'.format(sigma_i, sigma_q))
+        sigma_q, sigma_i = cfg.sigma_q, cfg.sigma_i
+        logger.info('Using user sigmas: q={}, i={}'.format(sigma_q, sigma_i))
 
     logger.info('Calculate weights and weighted mean...')
     weights = calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg)
     logger.info('Calculate weights and weighted mean... DONE')
 
-    weights[cfg.target_diagnostic] = targets  # NOTE: also save target variable
+    weights[cfg.target_diagnostic] = targets  # also save targets
 
     logger.info('Saving data...')
     save_data(weights, cfg)

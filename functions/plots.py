@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-23 14:26:19 lukbrunn>
+Time-stamp: <2018-10-29 15:11:33 lukas>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -12,10 +12,11 @@ Authors:
 Abstract: A collection of plot routines for quick checking of the output.
 
 """
+import matplotlib as mpl
+mpl.use('Agg')
 import os
 import logging
 import numpy as np
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 import cartopy
 import cartopy.crs as ccrs
@@ -139,7 +140,7 @@ def plot_fraction_matrix(xx, yy, data, cfg, idx=None, title=''):
 
 
 
-def plot_maps(ds, idx, cfg):
+def plot_maps(ds, idx, cfg, obs=None):
     """
     Mapplot of a given diagnostic and each model.
 
@@ -164,11 +165,19 @@ def plot_maps(ds, idx, cfg):
     for model_ensemble in ds['model_ensemble'].data:
         proj = ccrs.PlateCarree(central_longitude=0)
         fig, ax = plt.subplots(subplot_kw={'projection': proj})
-        ds.sel(model_ensemble=model_ensemble)[diagn].plot.pcolormesh(
-            ax=ax, transform=ccrs.PlateCarree(),
-            cbar_kwargs={'orientation': 'horizontal',
-                         'label': 'tas (K)',
-                         'pad': .1})
+        if obs is None:
+            ds.sel(model_ensemble=model_ensemble)[diagn].plot.pcolormesh(
+                 ax=ax, transform=ccrs.PlateCarree(),
+                 cbar_kwargs={'orientation': 'horizontal',
+                              'label': 'tas (K)',
+                              'pad': .1})
+        else:
+            (ds.sel(model_ensemble=model_ensemble)[diagn] -
+             obs[diagn]).plot.pcolormesh(
+                 ax=ax, transform=ccrs.PlateCarree(),
+                 cbar_kwargs={'orientation': 'horizontal',
+                              'label': 'tas (K)',
+                              'pad': .1})
         ax.coastlines()
         ax.add_feature(cartopy.feature.BORDERS)
         xx, yy = np.meshgrid(ds['lon'], ds['lat'])
