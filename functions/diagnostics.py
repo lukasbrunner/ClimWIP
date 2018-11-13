@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-11-12 21:52:34 lukas>
+Time-stamp: <2018-11-13 15:38:33 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -19,9 +19,12 @@ import warnings
 import regionmask
 import numpy as np
 import xarray as xr
-# import salem  # TODO: could use the roi function to cut regions
+import salem
 from cdo import Cdo
 cdo = Cdo()
+from scipy.stats import pearsonr
+
+from utils_python.decorators import vectorize
 
 from utils_python.xarray import select_region, flip_antimeridian
 
@@ -31,53 +34,21 @@ MASK = 'land_sea_mask_regionsmask.nc'  # 'seamask_g025.nc'
 unit_save = None
 
 
-def calc_Rnet(infile, outname, variable, derived=True, workdir=None):
-    """
-    Procedure to calculate derived diagnostic net radiation.
+def calculate_net_radiation(infile, varns, diagn):
+    assert varns == ('rlds', 'rlus', 'rsds', 'rsus')
+    da1 = xr.open_dataset(infile, decode_cf=False)[vanrs[0]]
+    da2 = xr.open_dataset(infile.replace(varns[0], varns[1]), decode_cf=False)[vanrs[1]]
+    da3 = xr.open_dataset(infile.replace(varns[0], varns[2]), decode_cf=False)[vanrs[2]]
+    da4 = xr.open_dataset(infile.replace(varns[0], varns[3]), decode_cf=False)[vanrs[3]]
 
-    Parameters:
-    - infile (string): Input filename incl. full path
-    - outname (string): Output filename incl. full path but without extension
-    - variable (string): one of the variables used in calculation present in infile
-    optional:
-    - derived (boolean): standard CMIP variable or derived from other variables?
-    - workdir (string): temporary directory where intermediate files are
-                        stored, default is in same location as script run
-    Returns:
-    - The name of the produced file (string)
-    """
-    if not derived:
-        logger.error('This function is for derived variables, ' +
-                     'something is wrong here.')
-        sys.exit
-    if not workdir:
-        workdir = 'tmp_work'
-    if (os.access(workdir, os.F_OK) == False):
-        os.makedirs(workdir)
-
-    variable1 = 'rlds'
-    variable2 = 'rlus'
-    variable3 = 'rsds'
-    variable4 = 'rsus'
-
-    # find files for other variables
-    infile1 = infile.replace(variable, variable1)
-    infile2 = infile.replace(variable, variable2)
-    infile3 = infile.replace(variable, variable3)
-    infile4 = infile.replace(variable, variable4)
-
-    outname_rnet = outname.replace(variable, 'rnet')
-    outfile = '%s.nc' %(outname_rnet)
-
-    lwnet = cdo.sub(input = '%s %s' %(infile, infile2))
-    swnet = cdo.sub(input = '%s %s' %(infile3, infile4))
-    rnetfile = cdo.add(input = '%s %s' %(lwnet, swnet))
-    cdo.chname('%s,rnet' %(variable), input = rnetfile,
-               output = outfile)
-    return outfile
+    da = (da1-da2) + (da3-da4)
+    # TODO: units; positive direction definition as attrs
+    ds = da.to_dataset(name=diagn)
+    ds.to_netcdf(outname)
 
 
 def standardize_units(da, varn):
+    """Convert units to a common standard"""
     if 'units' in da.attrs.keys():
         unit = da.attrs['units']
         attrs = da.attrs
@@ -113,7 +84,6 @@ def standardize_units(da, varn):
         else:
             logmsg = 'Unit {} not covered for {}'.format(unit, varn)
             raise ValueError(logmsg)
-
     else:
         logmsg = 'Variable {} not covered in standardize_units'.format(varn)
         logger.warning(logmsg)
@@ -121,12 +91,13 @@ def standardize_units(da, varn):
     return da
 
 
-def calculate_basic_diagnostic(infile, varn, outfile,
+def calculate_basic_diagnostic(infile, varn,
+                               outfile=None,
                                time_period=None,
                                season=None,
                                time_aggregation=None,
                                mask_ocean=False,
-                               region=None,
+                               region='GLOBAL',
                                overwrite=False,
                                regrid=False):
     """
@@ -187,7 +158,7 @@ def calculate_basic_diagnostic(infile, varn, outfile,
     else:
         raise NotImplementedError('season={}'.format(season))
 
-    if region is not None:
+    if region != 'GLOBAL':
         if isinstance(region, str):
             region = [region]
         masks = []
@@ -197,7 +168,10 @@ def calculate_basic_diagnostic(infile, varn, outfile,
                 regionmask.defined_regions.srex.mask(da) == key)
         mask = sum(masks) > 0
         da = da.where(mask)
-        da = da.salem.subset(roi=da)  # TODO: test (but I think this is genius!)
+        # NOTE: we could also use da.salem.roi here.
+        # salem.roi is super flexible, taking corner points, polygons, and shape files
+        # cut the smallest rectangular region containing all unmasked grid points
+        da = da.salem.subset(roi=da.isel(time=0))
 
     if mask_ocean:
         sea_mask = regionmask.defined_regions.natural_earth.land_110.mask(da) == 0
@@ -222,11 +196,14 @@ def calculate_basic_diagnostic(infile, varn, outfile,
                                 input_core_dims=[['time']],
                                 output_core_dims=['time'],
                                 keep_attrs=True)
+        elif time_aggregation is None or time_aggregation == 'CORR':
+            pass
         else:
             NotImplementedError('time_aggregation={}'.format(time_aggregation))
 
     ds = da.to_dataset(name=varn)
-    ds.to_netcdf(outfile)
+    if outfile is not None:
+        ds.to_netcdf(outfile)
     return ds
 
 
@@ -255,11 +232,21 @@ def calculate_diagnostic(infile, diagn, base_path, **kwargs):
     -------
     diagnostic : xarray.DataArray
     """
-    outfile = os.path.join(
-        base_path,
-        '{infile}_{time_period[0]}-{time_period[1]}_{season}_{time_aggregation}_EUR_3SREX.nc'.format(  # TODO!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            infile=os.path.basename(infile).replace('.nc', ''), **kwargs))
+    def get_outfile(**kwargs):
+        kwargs['infile'] = os.path.basename(kwargs['infile']).replace('.nc', '')
+        if isinstance(kwargs['region'], list):
+            kwargs['region'] = '-'.join(kwargs['region'])
+
+        return os.path.join(base_path, '_'.join([
+            '{infile}_{time_period[0]}-{time_period[1]}_{season}',
+            '{time_aggregation}_{region}.nc']).format(**kwargs))
+
+    @vectorize('(n),(n)->()')
+    def _corr(arr1, arr2):
+        return pearsonr(arr1, arr2)[0]
+
     if isinstance(diagn, str):  # basic diagnostic
+        outfile = get_outfile(infile=infile, **kwargs)
         return calculate_basic_diagnostic(infile, diagn, outfile, **kwargs)
     elif isinstance(diagn, dict):  # derived diagnostic
         assert len(diagn.keys()) == 1
@@ -268,117 +255,21 @@ def calculate_diagnostic(infile, diagn, base_path, **kwargs):
         diagn = key  # derived diagnostic
 
         if diagn == 'rnet':
-            derived_file = calc_Rnet(infile, outname, variable, derived=True)
-            outname = outname.replace(variable, 'rnet')
-            variable = 'rnet'
-            logger.debug(outname)
-        elif diagn == 'tasclt':
-            calc_diag(infile, diagn, **kwargs)
+            tmpfile = os.path.join(
+                base_path, os.path.basename(infile).replace(varns[0], diagn))
+            ds = calculate_net_radiation(infile, varns, tmpfile, diang)
+            outfile = get_outfile(infile=tmpfile, **kwargs)
+            return calculate_basic_diagnostic(tmpfile, diagn, outfile, **kwargs)
+        elif kwargs['time_aggregation'] == 'CORR':
+            assert len(varns) == 2, 'can only correlate two variables'
+            assert varns[0] != varns[1], 'can not correlate same variables'
+            outfile1 = get_outfile(infile=infile, **kwargs)
+            ds1 = calculate_basic_diagnostic(infile, varns[0], outfile1, **kwargs)
 
-
-
-def calc_CORR(infile,
-              base_path,
-              variable1,
-              variable2,
-              masko,
-              syear,
-              eyear,
-              season,
-              region,
-              overwrite=False):
-    """
-    Procedure to calculate derived diagnostic correlation between
-    two variables (e.g. temperature tas and cloud cover clt).
-
-    Parameters:
-    - infile (string): Input filename incl. full path
-    - outname (string): Output filename incl. full path but without extension
-    - variable1 (string): first variable in correlation
-    - variable2 (string): second variable in correlation
-    optional:
-    - derived (boolean): standard CMIP variable or derived from other variables?
-    - workdir (string): temporary directory where intermediate files are
-                        stored, default is in same location as script run
-    - masko (boolean): mask ocean or not?
-    - landseamask (string): if masko = True we need the path to a land sea mask
-    - syear (int): the start year if the original file is cut
-    - eyear (int): the end year if the original file is cut
-    - seasons (list of strings): a season JJA, MAM, DJF, SON or ANN for annual,
-                                 if not given all of them calculated
-    - region (string): a region name if the region should be cut
-    - areadir (string): a path to the directory where the lat lon of the
-                        regions are stored
-    Returns:
-    - Nothing, the produced file is outfile
-    """
-
-    # create template for output files
-    outname = os.path.join(
-        base_path,
-        os.path.basename(infile).replace('clt', 'tasclt'))  # TODO, DEBUG !!! remove hardcoded stuff!
-    outname = outname.replace('.nc', '')
-
-    filename_global_kind = '{}_{}-{}_{}_CORR_GLOBAL.nc'.format(outname, syear, eyear, season)
-    filename_region_kind = '{}_{}-{}_{}_CORR_{}.nc'.format(outname, syear, eyear, season, region)
-    if not overwrite and (os.path.isfile(filename_global_kind) and
-                          os.path.isfile(filename_region_kind)):
-        logger.debug('Diagnostic already exists & overwrite=False, skipping.')
-        if region == 'GLOBAL':
-            return filename_global_kind
-        return filename_region_kind
-
-    base_path1 = base_path.replace('tasclt', variable1)
-    os.makedirs(base_path1, exist_ok=True)
-    outname = os.path.join(base_path1, os.path.basename(infile)).replace('.nc', '')
-
-    filename_diag1 = calc_diag(infile, outname,
-                               diagnostic=variable1,
-                               masko=masko,
-                               syear=syear,
-                               eyear=eyear,
-                               season=season,
-                               region='GLOBAL',
-                               overwrite=overwrite,
-                               kind=None)
-
-    base_path2 = base_path.replace('tasclt', variable2)
-    os.makedirs(base_path2, exist_ok=True)
-    infile2 = infile.replace(variable1, variable2)
-    outname = os.path.join(base_path2, os.path.basename(infile2)).replace('.nc', '')
-    filename_diag2 = calc_diag(infile2, outname,
-                               diagnostic=variable2,
-                               masko=masko,
-                               syear=syear,
-                               eyear=eyear,
-                               season=season,
-                               region='GLOBAL',
-                               overwrite=overwrite,
-                               kind=None)
-
-    with TemporaryDirectory(dir='/net/h2o/climphys/tmp') as tmpdir:
-        tmpfile = os.path.join(tmpdir, 'temp.nc')
-        tmpfile2 = os.path.join(tmpdir, 'temp2.nc')
-
-        cdo.timcor(input='{} {}'.format(filename_diag1, filename_diag2),
-                   output=tmpfile)
-        cdo.chname('%s,%s%s' %(variable1, variable2, variable1),
-                   input=tmpfile, output=tmpfile2)
-        cdo.setattribute('%s%s@units=-' %(variable2, variable1),
-                         input=tmpfile2, output=tmpfile)
-        cdo.setvrange('-1,1', input=tmpfile, output=filename_global_kind)
-
-    if region != 'GLOBAL':
-        mask = np.loadtxt('%s/%s.txt' %(REGION_DIR, region))
-        lonmax = np.max(mask[:, 0])
-        lonmin = np.min(mask[:, 0])
-        latmax = np.max(mask[:, 1])
-        latmin = np.min(mask[:, 1])
-
-        cdo.sellonlatbox(lonmin,lonmax,latmin,latmax,
-                         input=filename_global_kind,
-                         output=filename_region_kind)
-
-    if region == 'GLOBAL':
-        return filename_global_kind
-    return filename_region_kind
+            infile2 = infile.replace(varns[0], varns[1])
+            outfile2 = get_outfile(infile=infile2, **kwargs)
+            ds2 = calculate_basic_diagnostic(infile2, varns[1], outfile2, **kwargs)
+            da = xr.apply_ufunc(_corr, ds1[varns[0]], ds2[varns[1]],
+                                input_core_dims=[['time'], ['time']],
+                                vectorize=True)
+            return da.to_dataset(name=diagn)
