@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-11-13 15:38:33 lukbrunn>
+Time-stamp: <2018-11-14 17:55:48 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -134,7 +134,7 @@ def calculate_basic_diagnostic(infile, varn,
     -------
     diagnostic : xarray.DataArray
     """
-    if not overwrite and os.path.isfile(outfile):
+    if not overwrite and outfile is not None and os.path.isfile(outfile):
         logger.debug('Diagnostic already exists & overwrite=False, skipping.')
         return xr.open_dataset(outfile)
 
@@ -142,7 +142,7 @@ def calculate_basic_diagnostic(infile, varn,
         infile = cdo.remapbic(os.path.join(REGION_DIR, MASK),
                                 options='-b F64', input=infile)
 
-    da = xr.open_dataarray(infile)
+    da = xr.open_dataset(infile)[varn]
     da = flip_antimeridian(da, to='Pacific')
     assert da.name == varn
     assert np.all(da['lat'].data == np.arange(-88.75, 90., 2.5))
@@ -153,7 +153,7 @@ def calculate_basic_diagnostic(infile, varn,
 
     if season in ['JJA', 'SON', 'DJF', 'MAM']:
         da = da.isel(time=da['time.season']==season)
-    elif season == 'ANN':
+    elif season is None or season == 'ANN':
         pass
     else:
         raise NotImplementedError('season={}'.format(season))
@@ -171,7 +171,7 @@ def calculate_basic_diagnostic(infile, varn,
         # NOTE: we could also use da.salem.roi here.
         # salem.roi is super flexible, taking corner points, polygons, and shape files
         # cut the smallest rectangular region containing all unmasked grid points
-        da = da.salem.subset(roi=da.isel(time=0))
+        # da = da.salem.subset(roi=da.isel(time=0))  # TODO: not working for pr?
 
     if mask_ocean:
         sea_mask = regionmask.defined_regions.natural_earth.land_110.mask(da) == 0
