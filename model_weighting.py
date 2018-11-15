@@ -486,14 +486,18 @@ def calc_predictors(fn, cfg):
         elif cfg.performance_normalize.lower() == 'mean':
             normalizer = np.nanmean(normalizer)
         elif cfg.performance_normalize.lower() == 'map':  # TODO: needs testing!
-            normalizer = np.interp(
-                 diagnostics['rmse_models'], [np.nanmin(normalizer), np.nanmax(normalizer)], [0, 1])
+            diagnostics['rmse_models'].data = np.interp(
+                 diagnostics['rmse_models'], [np.nanmin(normalizer), np.nanmax(normalizer)], [0, 1])  # shape [models, models], type 'numpy.ndarray'
+            diagnostics['rmse_obs'].data = np.interp(
+                 diagnostics['rmse_obs'], [np.nanmin(normalizer), np.nanmax(normalizer)], [0, 1]) # shape [models], type 'numpy.ndarray'
         else:
             raise ValueError
 
-        diagnostics['rmse_models'] /= normalizer
-        if cfg.obsdata:
-            diagnostics['rmse_obs'] /= normalizer
+        if cfg.performance_normalize.lower() != 'map':
+            diagnostics['rmse_models'] /= normalizer
+            if cfg.obsdata:
+                diagnostics['rmse_obs'] /= normalizer_obs
+
         logger.debug('Normalize data... DONE')
         diagnostics_all.append(diagnostics)
 
