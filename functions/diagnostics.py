@@ -247,6 +247,8 @@ def calc_diag(infile,
             cdo.timstd(input=tmpfile, output=filename_global_kind) # save output
         elif kind == 'TREND':
             cdo.regres(input=filename_global, output=filename_global_kind) # save output
+        elif kind == 'CYC':
+            cdo.ymonmean(input=filename_global, output=filename_global_kind)
 
         if region != 'GLOBAL':
             mask = np.loadtxt('{}.txt'.format(os.path.join(REGION_DIR, region)))
