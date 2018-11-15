@@ -38,11 +38,10 @@ import argparse
 import numpy as np
 import xarray as xr
 import copy
-import pandas as pd
 
 from utils_python import utils
 from utils_python.get_filenames import Filenames
-from utils_python.xarray import add_hist, area_weighted_mean, get_variable_name
+from utils_python.xarray import add_hist, area_weighted_mean, get_variable_name, standardize_time
 
 # I still don't understand how to properly do this :(
 # https://stackoverflow.com/questions/14132789/relative-imports-for-the-billionth-time
@@ -393,7 +392,7 @@ def calc_predictors(fn, cfg):
                 diagnostic = diagnostic.squeeze('time')
             except ValueError:
                 logger.debug('Cannot squeeze time, time in diagnostic >1 (CYC)')
-                diagnostic['time'] = pd.date_range(start = '%s-01-01' %(cfg.predictor_startyears[idx]), end = '%s-12-31' %(cfg.predictor_startyears[idx]), freq = 'M')
+                standardize_time(diagnostic)
 
             diagnostic['model_ensemble'] = xr.DataArray(
                 [model_ensemble], dims='model_ensemble')
@@ -465,7 +464,7 @@ def calc_predictors(fn, cfg):
                     (diagnostics[varn] - obs[varn])**2))
             except ValueError:
                 logger.debug('Cannot squeeze time, time in diagnostic >1 (CYC)')
-                obs['time'] = pd.date_range(start = '%s-01-01' %(cfg.predictor_startyears[idx]), end = '%s-12-31' %(cfg.predictor_startyears[idx]), freq = 'M')
+                standardize_time(obs)
                 diagnostics['rmse_obs'] = np.sqrt(area_weighted_mean((
                     (diagnostics[varn].load() - obs[varn].load())**2).sum('time')))
             logger.debug('Read observations & calculate model quality... DONE')
@@ -487,16 +486,18 @@ def calc_predictors(fn, cfg):
             normalizer = np.nanmean(normalizer)
         elif cfg.performance_normalize.lower() == 'map':  # TODO: needs testing!
             diagnostics['rmse_models'].data = np.interp(
-                 diagnostics['rmse_models'], [np.nanmin(normalizer), np.nanmax(normalizer)], [0, 1])  # shape [models, models], type 'numpy.ndarray'
+                 diagnostics['rmse_models'], [np.nanmin(normalizer),
+                                              np.nanmax(normalizer)], [0, 1])
             diagnostics['rmse_obs'].data = np.interp(
-                 diagnostics['rmse_obs'], [np.nanmin(normalizer), np.nanmax(normalizer)], [0, 1]) # shape [models], type 'numpy.ndarray'
+                 diagnostics['rmse_obs'], [np.nanmin(normalizer),
+                                           np.nanmax(normalizer)], [0, 1])
         else:
             raise ValueError
 
         if cfg.performance_normalize.lower() != 'map':
             diagnostics['rmse_models'] /= normalizer
             if cfg.obsdata:
-                diagnostics['rmse_obs'] /= normalizer_obs
+                diagnostics['rmse_obs'] /= normalizer
 
         logger.debug('Normalize data... DONE')
         diagnostics_all.append(diagnostics)
