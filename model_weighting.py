@@ -37,10 +37,11 @@ import logging
 import argparse
 import numpy as np
 import xarray as xr
+import copy
 
 from utils_python import utils
 from utils_python.get_filenames import Filenames
-from utils_python.xarray import add_hist, area_weighted_mean, get_variable_name
+from utils_python.xarray import add_hist, area_weighted_mean, get_variable_name, standardize_time
 
 # I still don't understand how to properly do this :(
 # https://stackoverflow.com/questions/14132789/relative-imports-for-the-billionth-time
@@ -139,7 +140,6 @@ def get_filenames(fn, varn, all_members=True):
                 'scenario': scenario,
                 'model': model,
                 'varn': fn.get_variable_values('varn')})
-
         ensembles_select = []
         for ensemble in ensembles_var:
             if ensemble in ensembles_all:
@@ -388,7 +388,12 @@ def calc_predictors(fn, cfg):
                 raise exc
 
             diagnostic = xr.open_dataset(filename_diag)
-            diagnostic = diagnostic.squeeze('time')
+            try:
+                diagnostic = diagnostic.squeeze('time')
+            except ValueError:
+                logger.debug('Cannot squeeze time, time in diagnostic >1 (CYC)')
+                standardize_time(diagnostic)
+
             diagnostic['model_ensemble'] = xr.DataArray(
                 [model_ensemble], dims='model_ensemble')
             diagnostics.append(diagnostic)
@@ -410,8 +415,15 @@ def calc_predictors(fn, cfg):
                 elif ii > jj:  # the matrix is symmetric
                     diagnostics['rmse_models'].data[ii, jj] = diagnostics['rmse_models'].data[jj, ii]
                 else:
-                    diagnostics['rmse_models'].data[ii, jj] = np.sqrt(area_weighted_mean(
-                        (diagnostic1 - diagnostic2)**2, latn='lat', lonn='lon'))
+                    try:
+                        diagnostics['rmse_models'].data[ii, jj] = np.sqrt(
+                            (area_weighted_mean((diagnostic1 - diagnostic2)**2,
+                                                latn='lat',
+                                                lonn='lon').sum('time')))
+                    except ValueError:
+                        diagnostics['rmse_models'].data[ii, jj] = np.sqrt(
+                            area_weighted_mean((diagnostic1 - diagnostic2)**2,
+                                               latn='lat', lonn='lon'))
         logger.debug('Calculate independence matrix... DONE')
 
         if cfg.obsdata is not None:
@@ -446,34 +458,47 @@ def calc_predictors(fn, cfg):
                 raise exc
 
             obs = xr.open_dataset(filename_obs)
-            obs = obs.squeeze('time')
-            diagnostics['rmse_obs'] = np.sqrt(area_weighted_mean(
+            try:
+                obs = obs.squeeze('time')
+                diagnostics['rmse_obs'] = np.sqrt(area_weighted_mean(
                     (diagnostics[varn] - obs[varn])**2))
+            except ValueError:
+                logger.debug('Cannot squeeze time, time in diagnostic >1 (CYC)')
+                standardize_time(obs)
+                diagnostics['rmse_obs'] = np.sqrt(area_weighted_mean((
+                    (diagnostics[varn].load() - obs[varn].load())**2).sum('time')))
             logger.debug('Read observations & calculate model quality... DONE')
 
         logger.debug('Normalize data...')
 
         normalizer = diagnostics['rmse_models'].data
+
         if cfg.obsdata:
             # TODO: the difference in including this is probably minor
             # think about what it actually means to include this here
             normalizer = np.concatenate([normalizer, [diagnostics['rmse_obs'].data]], axis=0)
 
-        if cfg.performance_normalize.lower() == 'median':
+        if cfg.performance_normalize is None:
+            normalizer = 1.
+        elif cfg.performance_normalize.lower() == 'median':
             normalizer = np.nanmedian(normalizer)
         elif cfg.performance_normalize.lower() == 'mean':
             normalizer = np.nanmean(normalizer)
         elif cfg.performance_normalize.lower() == 'map':  # TODO: needs testing!
-            normalizer = np.interp(
-                 diagnostics['rmse_models'], [np.nanmin(normalizer), np.nanmax(normalizer)], [0, 1])
-        elif cfg.performance_normalize is None:
-            normalizer = 1.
+            diagnostics['rmse_models'].data = np.interp(
+                 diagnostics['rmse_models'], [np.nanmin(normalizer),
+                                              np.nanmax(normalizer)], [0, 1])
+            diagnostics['rmse_obs'].data = np.interp(
+                 diagnostics['rmse_obs'], [np.nanmin(normalizer),
+                                           np.nanmax(normalizer)], [0, 1])
         else:
             raise ValueError
 
-        diagnostics['rmse_models'] /= normalizer
-        if cfg.obsdata:
-            diagnostics['rmse_obs'] /= normalizer
+        if cfg.performance_normalize.lower() != 'map':
+            diagnostics['rmse_models'] /= normalizer
+            if cfg.obsdata:
+                diagnostics['rmse_obs'] /= normalizer
+
         logger.debug('Normalize data... DONE')
         diagnostics_all.append(diagnostics)
 

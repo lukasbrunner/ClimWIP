@@ -165,19 +165,34 @@ def plot_maps(ds, idx, cfg, obs=None):
     for model_ensemble in ds['model_ensemble'].data:
         proj = ccrs.PlateCarree(central_longitude=0)
         fig, ax = plt.subplots(subplot_kw={'projection': proj})
-        if obs is None:
-            ds.sel(model_ensemble=model_ensemble)[diagn].plot.pcolormesh(
-                 ax=ax, transform=ccrs.PlateCarree(),
-                 cbar_kwargs={'orientation': 'horizontal',
-                              'label': 'tas (K)',
-                              'pad': .1})
-        else:
-            (ds.sel(model_ensemble=model_ensemble)[diagn] -
-             obs[diagn]).plot.pcolormesh(
-                 ax=ax, transform=ccrs.PlateCarree(),
-                 cbar_kwargs={'orientation': 'horizontal',
-                              'label': 'tas (K)',
-                              'pad': .1})
+        try:
+            if obs is None:
+                ds.sel(model_ensemble=model_ensemble)[diagn].plot.pcolormesh(
+                     ax=ax, transform=ccrs.PlateCarree(),
+                     cbar_kwargs={'orientation': 'horizontal',
+                                  'label': '%s (%s)' %(diagn, ds[diagn].units),
+                                  'pad': .1})
+            else:
+                (ds.sel(model_ensemble=model_ensemble)[diagn] -
+                 obs[diagn]).plot.pcolormesh(
+                     ax=ax, transform=ccrs.PlateCarree(),
+                     cbar_kwargs={'orientation': 'horizontal',
+                                  'label': '%s (%s)' %(diagn, ds[diagn].units),
+                                  'pad': .1})
+        except ValueError: # time not zero -> mean over time
+            if obs is None:
+                ds.sel(model_ensemble=model_ensemble)[diagn].mean('time').plot.pcolormesh(
+                     ax=ax, transform=ccrs.PlateCarree(),
+                     cbar_kwargs={'orientation': 'horizontal',
+                                  'label': '%s (%s)' %(diagn, ds[diagn].units),
+                                  'pad': .1})
+            else:
+                ((ds.sel(model_ensemble=model_ensemble)[diagn] -
+                  obs[diagn]).mean('time')).plot.pcolormesh(
+                     ax=ax, transform=ccrs.PlateCarree(),
+                     cbar_kwargs={'orientation': 'horizontal',
+                                  'label': '%s (%s)' %(diagn, ds[diagn].units),
+                                  'pad': .1})
         ax.coastlines()
         ax.add_feature(cartopy.feature.BORDERS)
         xx, yy = np.meshgrid(ds['lon'], ds['lat'])
@@ -186,8 +201,10 @@ def plot_maps(ds, idx, cfg, obs=None):
         longitude_formatter = LongitudeFormatter()
         latitude_formatter = LatitudeFormatter()
 
-        ax.set_xticks(np.arange(ds['lon'].min()-5, ds['lon'].max()+11, 10), crs=proj)
-        ax.set_yticks(np.arange(ds['lat'].min()-5, ds['lat'].max()+11, 10), crs=proj)
+        ax.set_xticks(np.arange(ds['lon'].min()-5, ds['lon'].max()+11, 10),
+                      crs=proj)
+        ax.set_yticks(np.arange(ds['lat'].min()-5, ds['lat'].max()+11, 10),
+                      crs=proj)
         ax.xaxis.set_ticks_position('both')
         ax.yaxis.set_ticks_position('both')
         ax.xaxis.set_major_formatter(longitude_formatter)
