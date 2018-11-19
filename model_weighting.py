@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-11-12 21:31:24 lukas>
+Time-stamp: <2018-11-19 12:09:32 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -442,6 +442,7 @@ def calc_predictors(fn, cfg):
 
         # --- optional plot output for consistency checks ---
         if cfg.plot:
+            logger.info('Plotting maps...')
             plotn = plot_rmse(diagnostics['rmse_models'], idx, cfg,
                               diagnostics['rmse_obs'] if cfg.obsdata else None)
             if cfg.obsdata:
@@ -452,6 +453,7 @@ def calc_predictors(fn, cfg):
             add_hist(diagnostics)
             diagnostics.to_netcdf(plotn + '.nc')  # also save the data
             logger.debug('Saved plot data: {}.nc'.format(plotn))
+            logger.info('Plotting maps... DONE')
         # ---------------------------------------------------
 
     # take the mean over all diagnostics and write them into a now Dataset
@@ -519,7 +521,7 @@ def calc_sigmas(targets, delta_i, cfg, debug=False):
     tmp = np.nanmean(delta_i)
 
     # a large value means all models have equal quality -> we want this as small as possible
-    sigmas_q = np.linspace(.1*tmp, 1.9*tmp, SIGMA_SIZE)
+    sigmas_q = np.linspace(.2*tmp, 1.9*tmp, SIGMA_SIZE)
     # a large value means all models depend on each other, a small value means all models
     # are independent -> we want this ~delta_i
     # TODO, NOTE: maybe we want the sigma_i with the largest spread in weights?
@@ -527,18 +529,44 @@ def calc_sigmas(targets, delta_i, cfg, debug=False):
     # in the case of a model with 10 members compared to a model with only one member
     # since we know that there is one model with 10 members, the larges element should be about
     # 10x the smallest one!
-    sigmas_i = np.linspace(.1*tmp, 1.9*tmp, SIGMA_SIZE)
+    sigmas_i = np.linspace(.2*tmp, 1.9*tmp, SIGMA_SIZE)
     # sigmas_i = np.array([tmp])  # DEBUG
 
     model_ensemble = targets['model_ensemble'].data
     models = [*map(lambda x: x.split('_')[0], model_ensemble)]
-    _, idx = np.unique(models, return_index=True)  # index of unique models
-    model_ensemble_1ens = model_ensemble[idx]
+    _, idx, counts = np.unique(models, return_index=True, return_counts=True)
+    model_ensemble_1ens = model_ensemble[idx]  # unique models
 
     targets_1ens = targets.sel(model_ensemble=model_ensemble_1ens)
     delta_i_1ens = delta_i.sel(model_ensemble=model_ensemble_1ens).sel(
         perfect_model_ensemble=model_ensemble_1ens).data
     targets_1ens_mean = area_weighted_mean(targets_1ens, latn='lat', lonn='lon').data
+
+    # if cfg.ensembles:
+    if False:
+        indep_1ens = calculate_independence_ensembles(delta_i_1ens, sigmas_i)
+        indep = calculate_independence_ensembles(delta_i, sigmas_i)
+
+        # is it enough to calculate it of all model_ensemble and then
+        # separate between models with only one member as reference and
+        # models with more than one to get the sigma?
+
+        # baseline independence (typical inter-dependence between models)
+        indep_1ens = np.mean(indep_1ens, axis=1)
+        indep_ens = []
+        for jj, (ii, cc) in enumerate(zip(idx, counts)):
+            if cc == 1:  # only one ensemble member
+                continue
+            temp = np.mean(indep[:, np.arange(ii, ii+cc)], axis=1)  # ens mean
+            # if a model has cc ensemble members the independence weighting
+            # should be about cc times lower than that of a model with only
+            # one ensemble member -> account for that difference
+            temp *= cc
+            indep_ens.append(temp)
+        indep_ens = np.mean(indep_ens, axis=0)
+
+        import ipdb; ipdb.set_trace()
+
 
     weights_sigmas = calculate_weights_sigmas(delta_i_1ens, sigmas_q, sigmas_i)
 
@@ -555,6 +583,14 @@ def calc_sigmas(targets, delta_i, cfg, debug=False):
         cfg.inside_ratio = cfg.percentiles[1] - cfg.percentiles[0]
     inside_ok = inside_ratio >= cfg.inside_ratio
 
+    if not np.any(inside_ok):
+        logmsg = 'Perfect model test failed for {}!'.format(cfg.inside_ratio)
+        # raise ValueError(logmsg)
+        # NOTE: force a result (probably not recommended?)
+        inside_ok = inside_ratio >= np.max(inside_ratio)
+        logmsg += 'Setting inside_ratio to max: {}'.format(np.max(inside_ratio))
+        logger.warning(logmsg)
+
     # in this matrix (i, j) find the element with the smallest sum i+j
     # which is True
     # NOTE: this is only correct if sigmas_q == sigmas_i
@@ -569,10 +605,6 @@ def calc_sigmas(targets, delta_i, cfg, debug=False):
         if idx_i + idx_q < index_sum:
             index_sum = idx_i + idx_q
             idx_i_min, idx_q_min = idx_i, idx_q
-
-    if idx_i_min is None:
-        logger.error('No optimal sigma values found')
-        import ipdb; ipdb.set_trace()
 
     logger.info('sigma_q: {:.4f}; sigma_i: {:.4f}'.format(
         sigmas_q[idx_q_min], sigmas_i[idx_i_min]))
