@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-11-14 17:55:48 lukbrunn>
+Time-stamp: <2018-11-16 15:54:35 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -19,19 +19,35 @@ import warnings
 import regionmask
 import numpy as np
 import xarray as xr
+from scipy import stats, signal
+import matplotlib as mpl
+mpl.use('Agg')  # need to set this here since salem imports plt
 import salem
 from cdo import Cdo
 cdo = Cdo()
-from scipy.stats import pearsonr
 
 from utils_python.decorators import vectorize
-
 from utils_python.xarray import select_region, flip_antimeridian
 
 logger = logging.getLogger(__name__)
 REGION_DIR = '{}/../cdo_data/'.format(os.path.dirname(__file__))
 MASK = 'land_sea_mask_regionsmask.nc'  # 'seamask_g025.nc'
 unit_save = None
+
+
+@vectorize('(n)->(n)')
+def detrend(data):
+    if np.any(np.isnan(data)):
+        return data * np.nan
+    return signal.detrend(data)
+
+
+@vectorize('(n)->()')
+def trend(data):
+    if np.any(np.isnan(data)):
+        return np.nan
+    xx = np.arange(len(data))
+    return stats.linregress(xx, data).slope
 
 
 def calculate_net_radiation(infile, varns, diagn):
@@ -73,7 +89,9 @@ def standardize_units(da, varn):
     # --- temperature ---
     elif varn in ['tas', 'tasmax', 'tasmin', 'tos']:
         newunit = "degC"
-        if unit == 'K':
+        if unit == newunit:
+            pass
+        elif unit == 'K':
             da.data -= 273.15
             da.attrs = attrs
             da.attrs['units'] = newunit
@@ -84,6 +102,17 @@ def standardize_units(da, varn):
         else:
             logmsg = 'Unit {} not covered for {}'.format(unit, varn)
             raise ValueError(logmsg)
+
+    # --- pressure ---
+    elif varn in ['psl']:
+        newunit = 'pa'
+        if unit.lower() == newunit:
+            pass
+        else:
+            logmsg = 'Unit {} not covered for {}'.format(unit, varn)
+            raise ValueError(logmsg)
+
+    # --- not covered ---
     else:
         logmsg = 'Variable {} not covered in standardize_units'.format(varn)
         logger.warning(logmsg)
@@ -110,14 +139,13 @@ def calculate_basic_diagnostic(infile, varn,
     Parameters
     ----------
     infile : str
-        Full path of the input file. Must contain exactly one non-dimension
-        variable.
+        Full path of the input file. Must contain varn.
     varn : str
         The variable contained in infile.
     outfile : str
         Full path of the output file. Path must exist.
     time_period : tuple of two strings, optional
-        Start and end of the time period. Each string must be in the form
+        Start and end of the time period. Both strings must be on of
         {"yyyy", "yyyy-mm", "yyyy-mm-dd"}.
     season : {'JJA', 'SON', 'DJF', 'MAM', 'ANN'}, optional
     time_aggregation : {'CLIM', 'STD', 'TREND'}, optional
@@ -144,7 +172,6 @@ def calculate_basic_diagnostic(infile, varn,
 
     da = xr.open_dataset(infile)[varn]
     da = flip_antimeridian(da, to='Pacific')
-    assert da.name == varn
     assert np.all(da['lat'].data == np.arange(-88.75, 90., 2.5))
     assert np.all(da['lon'].data == np.arange(-178.75, 180., 2.5))
 
@@ -171,7 +198,7 @@ def calculate_basic_diagnostic(infile, varn,
         # NOTE: we could also use da.salem.roi here.
         # salem.roi is super flexible, taking corner points, polygons, and shape files
         # cut the smallest rectangular region containing all unmasked grid points
-        # da = da.salem.subset(roi=da.isel(time=0))  # TODO: not working for pr?
+        da = da.salem.subset(roi=~np.isnan(da.isel(time=0)), margin=1)
 
     if mask_ocean:
         sea_mask = regionmask.defined_regions.natural_earth.land_110.mask(da) == 0
@@ -180,26 +207,29 @@ def calculate_basic_diagnostic(infile, varn,
     da = standardize_units(da, varn)
 
     with warnings.catch_warnings():
+        # grid cells outside the selected regions are filled with nan and will
+        # prompt warning when .mean & .std are called.
         warnings.filterwarnings('ignore', message='Mean of empty slice')
+        warnings.filterwarnings('ignore', message='Degrees of freedom <= 0 for slice')
 
         if time_aggregation == 'CLIM':
             da = da.groupby('time.year').mean('time')
             da = da.mean('year')
         elif time_aggregation == 'STD':
-            da = xr.apply_ufunc(scipy.detrend, da,
+            da = xr.apply_ufunc(detrend, da,
                                 input_core_dims=[['time']],
-                                output_core_dims=['time'],
+                                output_core_dims=[['time']],
                                 keep_attrs=True)
             da = da.std('time')
         elif time_aggregation == 'TREND':
-            da = xr.apply_ufunc(scipy.linregress, da,
+            da = xr.apply_ufunc(trend, da,
                                 input_core_dims=[['time']],
-                                output_core_dims=['time'],
+                                output_core_dims=[[]],
                                 keep_attrs=True)
         elif time_aggregation is None or time_aggregation == 'CORR':
             pass
         else:
-            NotImplementedError('time_aggregation={}'.format(time_aggregation))
+            NotImplementedError(f'time_aggregation={time_aggregation}')
 
     ds = da.to_dataset(name=varn)
     if outfile is not None:
@@ -243,7 +273,7 @@ def calculate_diagnostic(infile, diagn, base_path, **kwargs):
 
     @vectorize('(n),(n)->()')
     def _corr(arr1, arr2):
-        return pearsonr(arr1, arr2)[0]
+        return stats.pearsonr(arr1, arr2)[0]
 
     if isinstance(diagn, str):  # basic diagnostic
         outfile = get_outfile(infile=infile, **kwargs)
