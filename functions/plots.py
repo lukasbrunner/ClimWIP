@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-11-12 21:44:48 lukas>
+Time-stamp: <2018-11-19 11:33:37 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -109,7 +109,8 @@ def plot_fraction_matrix(xx, yy, data, cfg, idx=None, title=''):
     fig, ax = plt.subplots(figsize=(8, 8))
 
     im = ax.matshow(
-        data, cmap=cmap,
+        data+1.e-10,  # hack to include lower bounds
+        cmap=cmap,
         norm=mpl.colors.BoundaryNorm(
             boundaries,
             ncolors=len(boundaries)-1,
