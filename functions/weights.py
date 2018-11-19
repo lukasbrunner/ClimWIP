@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-23 10:39:08 lukbrunn>
+Time-stamp: <2018-11-15 17:51:03 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -22,16 +22,21 @@ logger = logging.getLogger(__name__)
 def calculate_weights(quality, independence, sigma_q, sigma_i):
     """Calculates the (NOT normalised) weights for each model N.
 
-    Parameters:
-    - quality (np.array): (N,) array specifying the model quality.
-    - independence (np.array): (N, N) array specifying the model independence.
-    - sigma_q (float): Sigma value defining the form of the weighting function
-      for the quality.
-    - sigma_i (float): Sigma value defining the form of the weighting function
-      for the independence.
+    Parameters
+    ----------
+    quality : array_like, shape (N,)
+        Array specifying the model quality.
+    independence : array_like, shape (N, N)
+        Array specifying the model independence.
+    sigma_q : float
+        Sigma value defining the form of the weighting function for the quality.
+    sigma_i : float
+        Sigma value defining the form of the weighting function for the independence.
 
-    Returns:
-    weights (N,)"""
+    Returns
+    -------
+    numerator, denominator : ndarray, shape (N,)
+    """
     assert len(quality.shape) == 1, 'quality needs to be a 1D array'
     assert len(independence.shape) == 2, 'quality needs to be a 2D array'
     errmsg = 'quality and independence need to have matching shapes'
@@ -76,11 +81,29 @@ def calculate_weights_sigmas(distances, sigmas_q, sigmas_i):
         for idx_i, sigma_i in enumerate(sigmas_i):
             for idx_d, dd in enumerate(distances):
                 # dd is the distance of each model to the idx_d-th model (='Truth')
-                nn, dd = calculate_weights(dd, distances, sigma_q, sigma_i)
-                ww = nn/dd
+                nu, de = calculate_weights(dd, distances, sigma_q, sigma_i)
+                ww = nu/de
                 assert np.isnan(ww[idx_d]), 'weight for model dd should be nan'
                 ww[idx_d] = 0.  # set weight=0 to exclude the 'True' model
                 assert ww.sum() != 0, 'weights = 0! sigma_q too small?'
                 ww /= ww.sum()  # normalize weights
+                ww[ww<1.e-10] = 0.  # set small weights to zero  # NOTE!!
                 weights[idx_q, idx_i, idx_d] = ww
+    return weights
+
+
+def calculate_independence_ensembles(distances, sigmas_i):
+    """
+    """
+    ss = distances.shape
+    assert len(ss) == 2, 'distances needs to be a 2D array'
+    assert ss[0] == ss[1], 'distances needs to be of shape (N, N)'
+    assert len(sigmas_i.shape) == 1, 'sigmas_i needs to be a 1D array'
+
+    sigma_q = sigmas_i[0]  # dummy
+    dd = distances[0]  # dummy
+    weights = np.empty((len(sigmas_i), len(dd)))*np.nan
+    for idx_i, sigma_i in enumerate(sigmas_i):
+        _, dd = calculate_weights(dd, distances, sigma_q, sigma_i)
+        weights[idx_i, :] = dd
     return weights
