@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-11-16 12:32:19 lukbrunn>
+Time-stamp: <2018-11-19 12:09:17 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -64,7 +64,7 @@ def weighted_quantile2(values, weights, quantiles):
     assert np.isclose(weights.sum(), 1., atol=.00001)
     assert quantiles.size == 2
     assert quantiles[0] < quantiles[1]
-    assert len(weights[weights<1.e-10]) != 0, 'at least perfect model weight should be 0'
+    assert len(weights[weights<1.e-10]) >= 1, 'at least perfect model weight should be 0'
     return quantile(values, quantiles, weights=weights)
 
 
