@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-16 11:36:21 lukbrunn>
+Time-stamp: <2018-11-16 12:32:19 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -64,7 +64,7 @@ def weighted_quantile2(values, weights, quantiles):
     assert np.isclose(weights.sum(), 1., atol=.00001)
     assert quantiles.size == 2
     assert quantiles[0] < quantiles[1]
-    assert len(weights[weights==0.]) == 1, 'perfect model weight should be 0'
+    assert len(weights[weights<1.e-10]) != 0, 'at least perfect model weight should be 0'
     return quantile(values, quantiles, weights=weights)
 
 
@@ -109,9 +109,9 @@ def perfect_model_test(data, weights_sigmas, perc_lower=.1, perc_upper=.9):
       of models.
     """
     tmp = weighted_quantile2(data, weights_sigmas, (perc_lower, perc_upper))
-    assert np.all(tmp[..., 0] < tmp[..., 1])
+    assert np.all(tmp[..., 0] <= tmp[..., 1])
     errmsg = 'Lower and upper percentile equivalent! Too strong weighting?'
-    assert not np.any(np.isclose(tmp[..., 1] - tmp[..., 0], 0, atol=1.e-5)), errmsg
+    # assert not np.any(np.isclose(tmp[..., 1] - tmp[..., 0], 0, atol=1.e-5)), errmsg
     inside = (tmp[..., 0] <= data) & (data <= tmp[..., 1])
     return inside.sum(axis=-1) / float(inside.shape[-1])
 
