@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-11-19 11:33:37 lukbrunn>
+Time-stamp: <2018-11-20 18:00:20 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -162,6 +162,10 @@ def plot_maps(ds, idx, cfg, obs=None):
 
     path = os.path.join(cfg.plot_path, cfg.config, 'maps')
     os.makedirs(path, exist_ok=True)
+
+    if 'month' in ds.dims:
+        ds = ds.sum('month')
+        obs = obs.sum('month')
 
     for model_ensemble in ds['model_ensemble'].data:
         proj = ccrs.PlateCarree(central_longitude=0)
