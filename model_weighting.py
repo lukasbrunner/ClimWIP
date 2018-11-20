@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-29 15:09:55 lukas>
+Time-stamp: <2018-11-20 17:35:09 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -392,8 +392,7 @@ def calc_predictors(fn, cfg):
                 diagnostic = diagnostic.squeeze('time')
             except ValueError:
                 logger.debug('Cannot squeeze time, time in diagnostic >1 (CYC)')
-                standardize_time(diagnostic)
-
+                diagnostic = standardize_time(diagnostic)
             diagnostic['model_ensemble'] = xr.DataArray(
                 [model_ensemble], dims='model_ensemble')
             diagnostics.append(diagnostic)
@@ -419,7 +418,7 @@ def calc_predictors(fn, cfg):
                         diagnostics['rmse_models'].data[ii, jj] = np.sqrt(
                             (area_weighted_mean((diagnostic1 - diagnostic2)**2,
                                                 latn='lat',
-                                                lonn='lon').sum('time')))
+                                                lonn='lon'))).sum('time')
                     except ValueError:
                         diagnostics['rmse_models'].data[ii, jj] = np.sqrt(
                             area_weighted_mean((diagnostic1 - diagnostic2)**2,
@@ -464,13 +463,12 @@ def calc_predictors(fn, cfg):
                     (diagnostics[varn] - obs[varn])**2))
             except ValueError:
                 logger.debug('Cannot squeeze time, time in diagnostic >1 (CYC)')
-                standardize_time(obs)
+                obs = standardize_time(obs)
                 diagnostics['rmse_obs'] = np.sqrt(area_weighted_mean((
-                    (diagnostics[varn].load() - obs[varn].load())**2).sum('time')))
+                    (diagnostics[varn].load() - obs[varn].load())**2))).sum('time')
             logger.debug('Read observations & calculate model quality... DONE')
 
         logger.debug('Normalize data...')
-
         normalizer = diagnostics['rmse_models'].data
 
         if cfg.obsdata:
