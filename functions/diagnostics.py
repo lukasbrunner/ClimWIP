@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-11-16 15:54:35 lukbrunn>
+Time-stamp: <2018-11-20 17:58:18 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -27,7 +27,7 @@ from cdo import Cdo
 cdo = Cdo()
 
 from utils_python.decorators import vectorize
-from utils_python.xarray import select_region, flip_antimeridian
+from utils_python.xarray import select_region, standardize_dimensions
 
 logger = logging.getLogger(__name__)
 REGION_DIR = '{}/../cdo_data/'.format(os.path.dirname(__file__))
@@ -171,7 +171,7 @@ def calculate_basic_diagnostic(infile, varn,
                                 options='-b F64', input=infile)
 
     da = xr.open_dataset(infile)[varn]
-    da = flip_antimeridian(da, to='Pacific')
+    da = standardize_dimensions(da)
     assert np.all(da['lat'].data == np.arange(-88.75, 90., 2.5))
     assert np.all(da['lon'].data == np.arange(-178.75, 180., 2.5))
 
@@ -226,6 +226,8 @@ def calculate_basic_diagnostic(infile, varn,
                                 input_core_dims=[['time']],
                                 output_core_dims=[[]],
                                 keep_attrs=True)
+        elif time_aggregation == 'CYC':
+            da = da.groupby('time.month').mean('time')
         elif time_aggregation is None or time_aggregation == 'CORR':
             pass
         else:
