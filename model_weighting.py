@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-11-19 12:09:32 lukbrunn>
+Time-stamp: <2018-11-20 17:48:23 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -354,7 +354,6 @@ def calc_predictors(fn, cfg):
             except Exception as exc:
                 logger.error('Exception at model: {}'.format(model_ensemble))
                 raise exc
-
             diagnostic['model_ensemble'] = xr.DataArray(
                 [model_ensemble], dims='model_ensemble')
             diagnostics.append(diagnostic)
@@ -374,8 +373,11 @@ def calc_predictors(fn, cfg):
                 elif ii > jj:  # the matrix is symmetric
                     diagnostics['rmse_models'].data[ii, jj] = diagnostics['rmse_models'].data[jj, ii]
                 else:
-                    diagnostics['rmse_models'].data[ii, jj] = np.sqrt(area_weighted_mean(
+                    diff = np.sqrt(area_weighted_mean(
                         (diagnostic1 - diagnostic2)**2, latn='lat', lonn='lon'))
+                    if cfg.predictor_aggs[idx] == 'CYC':
+                        diff = diff.sum('month')
+                    diagnostics['rmse_models'].data[ii, jj] = diff
         logger.debug('Calculate independence matrix... DONE')
 
         if cfg.obsdata is not None:
@@ -407,8 +409,11 @@ def calc_predictors(fn, cfg):
                 logger.error('Exception at observations: {}'.format(filename))
                 raise exc
 
-            diagnostics['rmse_obs'] = np.sqrt(area_weighted_mean(
-                    (diagnostics[diagn] - obs[diagn])**2))
+            diff = np.sqrt(
+                area_weighted_mean((diagnostics[diagn] - obs[diagn])**2))
+            if cfg.predictor_aggs[idx] == 'CYC':
+                diff = diff.sum('month')
+            diagnostics['rmse_obs'] = diff
             logger.debug('Read observations & calculate model quality... DONE')
 
         logger.debug('Normalize data...')
@@ -521,7 +526,7 @@ def calc_sigmas(targets, delta_i, cfg, debug=False):
     tmp = np.nanmean(delta_i)
 
     # a large value means all models have equal quality -> we want this as small as possible
-    sigmas_q = np.linspace(.2*tmp, 1.9*tmp, SIGMA_SIZE)
+    sigmas_q = np.linspace(.1*tmp, 1.9*tmp, SIGMA_SIZE)
     # a large value means all models depend on each other, a small value means all models
     # are independent -> we want this ~delta_i
     # TODO, NOTE: maybe we want the sigma_i with the largest spread in weights?
@@ -529,7 +534,7 @@ def calc_sigmas(targets, delta_i, cfg, debug=False):
     # in the case of a model with 10 members compared to a model with only one member
     # since we know that there is one model with 10 members, the larges element should be about
     # 10x the smallest one!
-    sigmas_i = np.linspace(.2*tmp, 1.9*tmp, SIGMA_SIZE)
+    sigmas_i = np.linspace(.1*tmp, 1.9*tmp, SIGMA_SIZE)
     # sigmas_i = np.array([tmp])  # DEBUG
 
     model_ensemble = targets['model_ensemble'].data
