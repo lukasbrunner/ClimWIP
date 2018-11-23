@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-11-20 17:48:23 lukbrunn>
+Time-stamp: <2018-11-23 18:22:47 lukas>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -39,29 +39,40 @@ import numpy as np
 import xarray as xr
 
 from utils_python import utils
+from utils_python.decorators import log_function
 from utils_python.get_filenames import Filenames
-from utils_python.xarray import add_hist, area_weighted_mean, get_variable_name
+from utils_python.xarray import add_hist, area_weighted_mean
 
 # I still don't understand how to properly do this :(
 # https://stackoverflow.com/questions/14132789/relative-imports-for-the-billionth-time
 if __name__ == '__main__':
     from functions.diagnostics import calculate_diagnostic
     from functions.percentile import perfect_model_test
-    from functions.weights import (calculate_weights_sigmas,
-                                   calculate_weights)
-    from functions.plots import (plot_rmse,
-                                 plot_maps,
-                                 plot_fraction_matrix,
-                                 plot_weights)
+    from functions.weights import (
+        calculate_weights_sigmas,
+        calculate_weights,
+        independence_sigma,
+    )
+    from functions.plots import (
+        plot_rmse,
+        plot_maps,
+        plot_fraction_matrix,
+        plot_weights,
+    )
 else:
     from model_weighting.functions.diagnostics import calculate_diagnostic
     from model_weighting.functions.percentile import perfect_model_test
-    from model_weighting.functions.weights import (calculate_weights_sigmas,
-                                                   calculate_weights)
-    from model_weighting.functions.plots import (plot_rmse,
-                                                 plot_maps,
-                                                 plot_fraction_matrix,
-                                                 plot_weights)
+    from model_weighting.functions.weights import (
+        calculate_weights_sigmas,
+        calculate_weights,
+        independence_sigma,
+    )
+    from model_weighting.functions.plots import (
+        plot_rmse,
+        plot_maps,
+        plot_fraction_matrix,
+        plot_weights,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -83,8 +94,16 @@ def test_config(cfg):
     if (cfg.plot_path is not None and
         not os.access(cfg.plot_path, os.W_OK | os.X_OK)):
         raise ValueError('plot_path is not writable')
+    if not np.all([isinstance(cfg.overwrite, bool),
+                   isinstance(cfg.debug, bool),
+                   isinstance(cfg.plot, bool)]):
+        raise ValueError('Typo in overwrite, debug, plot?')
+    if cfg.ensemble_independence and not cfg.ensembles:
+        raise ValueError('Can not use ensemble_independence without ensembles')
+    return None
 
 
+@log_function()
 def read_config():
     """Read the given configuration from the config file"""
     parser = argparse.ArgumentParser(
@@ -175,6 +194,7 @@ def get_filenames(fn, varn, all_members=True):
     return filenames, model_ensemble
 
 
+@log_function()
 def set_up_filenames(cfg):
     """Sets up the Filenames object.
 
@@ -230,6 +250,7 @@ def set_up_filenames(cfg):
     return fn
 
 
+@log_function()
 def calc_target(fn, cfg):
     """
     Calculates the target variable for each model.
@@ -252,34 +273,37 @@ def calc_target(fn, cfg):
     os.makedirs(base_path, exist_ok=True)
 
     targets = []
-    for filename, model_ensemble in zip(*get_filenames(fn, cfg.target_diagnostic, cfg.ensembles)):
-        logger.debug('Calculate diagnostics for {}...'.format(model_ensemble))
+    for filename, model_ensemble in zip(*get_filenames(
+            fn, cfg.target_diagnostic, cfg.ensembles)):
 
-        try:  # if calculation of diagnostic fails return current model
-            target = calculate_diagnostic(filename, cfg.target_diagnostic, base_path,
-                                          time_period=(cfg.target_startyear,
-                                                       cfg.target_endyear),
-                                          season=cfg.target_season,
-                                          time_aggregation=cfg.target_agg,
-                                          mask_ocean=cfg.target_masko,
-                                          region=cfg.region,
-                                          overwrite=cfg.overwrite)
+        with utils.LogRegion(name=model_ensemble, level='debug'):
+
+            target = calculate_diagnostic(
+                filename, cfg.target_diagnostic, base_path,
+                time_period=(
+                    cfg.target_startyear,
+                    cfg.target_endyear),
+                season=cfg.target_season,
+                time_aggregation=cfg.target_agg,
+                mask_ocean=cfg.target_masko,
+                region=cfg.region,
+                overwrite=cfg.overwrite,
+            )
 
             if cfg.target_startyear_ref is not None:
-                target_hist = calculate_diagnostic(filename, cfg.target_diagnostic, base_path,
-                                                   time_period=(cfg.target_startyear_ref,
-                                                                cfg.target_endyear_ref),
-                                                   season=cfg.target_season,
-                                                   time_aggregation=cfg.target_agg,
-                                                   mask_ocean=cfg.target_masko,
-                                                   region=cfg.region,
-                                                   overwrite=cfg.overwrite)
-
-                target[cfg.target_diagnostic] -= target_hist[cfg.target_diagnostic]  # change historical to future
-
-        except Exception as exc:
-            logger.error('Exception at model: {}'.format(model_ensemble))
-            raise exc
+                target_hist = calculate_diagnostic(
+                    filename, cfg.target_diagnostic, base_path,
+                    time_period=(
+                        cfg.target_startyear_ref,
+                        cfg.target_endyear_ref),
+                    season=cfg.target_season,
+                    time_aggregation=cfg.target_agg,
+                    mask_ocean=cfg.target_masko,
+                    region=cfg.region,
+                    overwrite=cfg.overwrite,
+                )
+                # change historical to future
+                target[cfg.target_diagnostic] -= target_hist[cfg.target_diagnostic]
 
         target['model_ensemble'] = xr.DataArray([model_ensemble], dims='model_ensemble')
         targets.append(target)
@@ -287,6 +311,7 @@ def calc_target(fn, cfg):
     return xr.concat(targets, dim='model_ensemble')[cfg.target_diagnostic]
 
 
+@log_function()
 def calc_predictors(fn, cfg):
     """
     Calculate the predictor diagnostics.
@@ -323,8 +348,7 @@ def calc_predictors(fn, cfg):
     # for each file in filenames calculate all diagnostics for each time period
     diagnostics_all = []
     for idx, diagn in enumerate(cfg.predictor_diagnostics):
-        logger.info('Calculate diagnostics for {} {}...'.format(
-            diagn, cfg.predictor_aggs[idx]))
+        logger.info(f'Calculate diagnostic {diagn}{cfg.predictor_aggs[idx]}...')
 
         base_path = os.path.join(
             cfg.save_path, diagn, cfg.freq,
@@ -336,24 +360,26 @@ def calc_predictors(fn, cfg):
         varn = DERIVED[diagn][0] if diagn in DERIVED.keys() else diagn
 
         diagnostics = []
-        for filename, model_ensemble in zip(*get_filenames(fn, varn, cfg.ensembles)):
-            logger.debug('Calculate diagnostics for {}...'.format(model_ensemble))
+        for filename, model_ensemble in zip(*get_filenames(
+                fn, varn, cfg.ensembles)):
 
-            if diagn in DERIVED.keys():
-                diagn = {diagn: DERIVED[diagn]}
+            with utils.LogRegion(name=model_ensemble, level='debug'):
 
-            try:
-                diagnostic = calculate_diagnostic(filename, diagn, base_path,
-                                                  time_period=(cfg.predictor_startyears[idx],
-                                                               cfg.predictor_endyears[idx]),
-                                                  season=cfg.predictor_seasons[idx],
-                                                  time_aggregation=cfg.predictor_aggs[idx],
-                                                  mask_ocean=cfg.predictor_masko[idx],
-                                                  region=cfg.region,
-                                                  overwrite=cfg.overwrite)
-            except Exception as exc:
-                logger.error('Exception at model: {}'.format(model_ensemble))
-                raise exc
+                if diagn in DERIVED.keys():
+                    diagn = {diagn: DERIVED[diagn]}
+
+                diagnostic = calculate_diagnostic(
+                    filename, diagn, base_path,
+                    time_period=(
+                        cfg.predictor_startyears[idx],
+                        cfg.predictor_endyears[idx]),
+                    season=cfg.predictor_seasons[idx],
+                    time_aggregation=cfg.predictor_aggs[idx],
+                    mask_ocean=cfg.predictor_masko[idx],
+                    region=cfg.region,
+                    overwrite=cfg.overwrite,
+                )
+
             diagnostic['model_ensemble'] = xr.DataArray(
                 [model_ensemble], dims='model_ensemble')
             diagnostics.append(diagnostic)
@@ -373,11 +399,10 @@ def calc_predictors(fn, cfg):
                 elif ii > jj:  # the matrix is symmetric
                     diagnostics['rmse_models'].data[ii, jj] = diagnostics['rmse_models'].data[jj, ii]
                 else:
-                    diff = np.sqrt(area_weighted_mean(
-                        (diagnostic1 - diagnostic2)**2, latn='lat', lonn='lon'))
+                    diff = area_weighted_mean((diagnostic1 - diagnostic2)**2)
                     if cfg.predictor_aggs[idx] == 'CYC':
                         diff = diff.sum('month')
-                    diagnostics['rmse_models'].data[ii, jj] = diff
+                    diagnostics['rmse_models'].data[ii, jj] = np.sqrt(diff)
         logger.debug('Calculate independence matrix... DONE')
 
         if cfg.obsdata is not None:
@@ -395,25 +420,24 @@ def calc_predictors(fn, cfg):
             #         base_path, os.path.basename(filename))
             # filename_template = filename_template.replace('.nc', '')
 
-            try:
-                obs = calculate_diagnostic(filename, diagn, base_path,
-                                           time_period=(cfg.predictor_startyears[idx],
-                                                        cfg.predictor_endyears[idx]),
-                                           season=cfg.predictor_seasons[idx],
-                                           time_aggregation=cfg.predictor_aggs[idx],
-                                           mask_ocean=cfg.predictor_masko[idx],
-                                           region=cfg.region,
-                                           overwrite=cfg.overwrite,
-                                           regrid=True)
-            except Exception as exc:
-                logger.error('Exception at observations: {}'.format(filename))
-                raise exc
+            with utils.LogRegion('Calculate diagnostic for observations', level='debug'):
+                obs = calculate_diagnostic(
+                    filename, diagn, base_path,
+                    time_period=(
+                        cfg.predictor_startyears[idx],
+                        cfg.predictor_endyears[idx]),
+                    season=cfg.predictor_seasons[idx],
+                    time_aggregation=cfg.predictor_aggs[idx],
+                    mask_ocean=cfg.predictor_masko[idx],
+                    region=cfg.region,
+                    overwrite=cfg.overwrite,
+                    regrid=True,
+                )
 
-            diff = np.sqrt(
-                area_weighted_mean((diagnostics[diagn] - obs[diagn])**2))
+            diff = area_weighted_mean((diagnostics[diagn] - obs[diagn])**2)
             if cfg.predictor_aggs[idx] == 'CYC':
                 diff = diff.sum('month')
-            diagnostics['rmse_obs'] = diff
+            diagnostics['rmse_obs'] = np.sqrt(diff)
             logger.debug('Read observations & calculate model quality... DONE')
 
         logger.debug('Normalize data...')
@@ -430,7 +454,8 @@ def calc_predictors(fn, cfg):
             normalizer = np.nanmean(normalizer)
         elif cfg.performance_normalize.lower() == 'map':  # TODO: needs testing!
             normalizer = np.interp(
-                 diagnostics['rmse_models'], [np.nanmin(normalizer), np.nanmax(normalizer)], [0, 1])
+                diagnostics['rmse_models'],
+                [np.nanmin(normalizer), np.nanmax(normalizer)], [0, 1])
         elif cfg.performance_normalize is None:
             normalizer = 1.
         else:
@@ -447,18 +472,17 @@ def calc_predictors(fn, cfg):
 
         # --- optional plot output for consistency checks ---
         if cfg.plot:
-            logger.info('Plotting maps...')
-            plotn = plot_rmse(diagnostics['rmse_models'], idx, cfg,
-                              diagnostics['rmse_obs'] if cfg.obsdata else None)
-            if cfg.obsdata:
-                plot_maps(diagnostics, idx, cfg, obs=obs)
-            else:
-                plot_maps(diagnostics, idx, cfg)
+            with utils.LogRegion('Plotting', level='info'):
+                plotn = plot_rmse(diagnostics['rmse_models'], idx, cfg,
+                                  diagnostics['rmse_obs'] if cfg.obsdata else None)
+                if cfg.obsdata:
+                    plot_maps(diagnostics, idx, cfg, obs=obs)
+                else:
+                    plot_maps(diagnostics, idx, cfg)
 
-            add_hist(diagnostics)
-            diagnostics.to_netcdf(plotn + '.nc')  # also save the data
-            logger.debug('Saved plot data: {}.nc'.format(plotn))
-            logger.info('Plotting maps... DONE')
+                add_hist(diagnostics)
+                diagnostics.to_netcdf(plotn + '.nc')  # also save the data
+                logger.debug('Saved plot data: {}.nc'.format(plotn))
         # ---------------------------------------------------
 
     # take the mean over all diagnostics and write them into a now Dataset
@@ -495,6 +519,7 @@ def calc_predictors(fn, cfg):
     return delta_q['delta_q'], delta_i['delta_i']
 
 
+@log_function()
 def calc_sigmas(targets, delta_i, cfg, debug=False):
     """
     Perform a perfect model test to estimate the optimal shape parameters.
@@ -522,6 +547,10 @@ def calc_sigmas(targets, delta_i, cfg, debug=False):
     sigma_i : float
         Optimal shape parameter for independence weighting
     """
+    if cfg.sigma_i is None or cfg.sigma_q is None:
+        logger.info('Using user sigmas: q={}, i={}'.format(cfg.sigma_q, cfg.sigma_i))
+        return cfg.sigma_q, cfg.sigma_i
+
     SIGMA_SIZE = 41
     tmp = np.nanmean(delta_i)
 
@@ -547,31 +576,10 @@ def calc_sigmas(targets, delta_i, cfg, debug=False):
         perfect_model_ensemble=model_ensemble_1ens).data
     targets_1ens_mean = area_weighted_mean(targets_1ens, latn='lat', lonn='lon').data
 
-    # if cfg.ensembles:
-    if False:
-        indep_1ens = calculate_independence_ensembles(delta_i_1ens, sigmas_i)
-        indep = calculate_independence_ensembles(delta_i, sigmas_i)
-
-        # is it enough to calculate it of all model_ensemble and then
-        # separate between models with only one member as reference and
-        # models with more than one to get the sigma?
-
-        # baseline independence (typical inter-dependence between models)
-        indep_1ens = np.mean(indep_1ens, axis=1)
-        indep_ens = []
-        for jj, (ii, cc) in enumerate(zip(idx, counts)):
-            if cc == 1:  # only one ensemble member
-                continue
-            temp = np.mean(indep[:, np.arange(ii, ii+cc)], axis=1)  # ens mean
-            # if a model has cc ensemble members the independence weighting
-            # should be about cc times lower than that of a model with only
-            # one ensemble member -> account for that difference
-            temp *= cc
-            indep_ens.append(temp)
-        indep_ens = np.mean(indep_ens, axis=0)
-
-        import ipdb; ipdb.set_trace()
-
+    idx_i_min = None
+    if cfg.ensemble_independence:
+        weighting_ratio = independence_sigma(delta_i, sigmas_i, idx, counts)
+        idx_i_min = np.argmin(np.abs(weighting_ratio - 1))
 
     weights_sigmas = calculate_weights_sigmas(delta_i_1ens, sigmas_q, sigmas_i)
 
@@ -580,36 +588,42 @@ def calc_sigmas(targets, delta_i, cfg, debug=False):
 
     # ratio of perfect models inside their respective weighted percentiles
     # for each sigma combination
-    inside_ratio = perfect_model_test(targets_1ens_mean, weights_sigmas,
-                                      perc_lower=cfg.percentiles[0],
-                                      perc_upper=cfg.percentiles[1])
+    inside_ratio = perfect_model_test(
+        targets_1ens_mean, weights_sigmas,
+        perc_lower=cfg.percentiles[0],
+        perc_upper=cfg.percentiles[1])
 
     if cfg.inside_ratio is None:
         cfg.inside_ratio = cfg.percentiles[1] - cfg.percentiles[0]
     inside_ok = inside_ratio >= cfg.inside_ratio
 
-    if not np.any(inside_ok):
+    if not np.any(inside_ok[:, idx_i_min]):
         logmsg = 'Perfect model test failed for {}!'.format(cfg.inside_ratio)
+
         # raise ValueError(logmsg)
         # NOTE: force a result (probably not recommended?)
-        inside_ok = inside_ratio >= np.max(inside_ratio)
-        logmsg += 'Setting inside_ratio to max: {}'.format(np.max(inside_ratio))
+        inside_ok = inside_ratio >= np.max(inside_ratio[:, idx_i_min])
+        logmsg += 'Setting inside_ratio to max: {}'.format(
+            np.max(inside_ratio[idx_i_min]))
         logger.warning(logmsg)
 
-    # in this matrix (i, j) find the element with the smallest sum i+j
-    # which is True
-    # NOTE: this is only correct if sigmas_q == sigmas_i
-    index_sum = 9999
-    idx_i_min, idx_q_min = None, None
-    for idx_q, qq in enumerate(inside_ok):
-        if qq.sum() == 0:
-            continue  # no fitting element
-        elif idx_q >= index_sum:
-            break  # no further optimization possible
-        idx_i = np.where(qq)[0][0]
-        if idx_i + idx_q < index_sum:
-            index_sum = idx_i + idx_q
-            idx_i_min, idx_q_min = idx_i, idx_q
+    if idx_i_min is not None:
+        idx_q_min = np.argmin(1-inside_ok[:, idx_i_min])
+    else:
+        # in this matrix (i, j) find the element with the smallest sum i+j
+        # which is True
+        # NOTE: this is only correct if sigmas_q == sigmas_i
+        index_sum = 9999
+        idx_q_min = None
+        for idx_q, qq in enumerate(inside_ok):
+            if qq.sum() == 0:
+                continue  # no fitting element
+            elif idx_q >= index_sum:
+                break  # no further optimization possible
+            idx_i = np.where(qq)[0][0]
+            if idx_i + idx_q < index_sum:
+                index_sum = idx_i + idx_q
+                idx_i_min, idx_q_min = idx_i, idx_q
 
     logger.info('sigma_q: {:.4f}; sigma_i: {:.4f}'.format(
         sigmas_q[idx_q_min], sigmas_i[idx_i_min]))
@@ -623,6 +637,7 @@ def calc_sigmas(targets, delta_i, cfg, debug=False):
     return sigmas_q[idx_q_min], sigmas_i[idx_i_min]
 
 
+@log_function()
 def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg):
     """
     Calculate the weights for given set of parameters.
@@ -651,7 +666,7 @@ def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg):
     if cfg.obsdata:
         numerator, denominator = calculate_weights(delta_q, delta_i, sigma_q, sigma_i)
         weights = numerator/denominator
-        weights /=  weights.sum()
+        weights /= weights.sum()
     else:  # in this case delta_q is a matrix for each model as truth once
         calculate_weights_matrix = np.vectorize(
             calculate_weights, signature='(n)->(n)(n)', excluded=[1, 2, 3])
@@ -674,6 +689,7 @@ def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg):
     return ds
 
 
+@log_function()
 def save_data(ds, cfg, dtype='nc'):
     """Save the given Dataset to a file.
 
@@ -702,51 +718,33 @@ def save_data(ds, cfg, dtype='nc'):
         raise NotImplementedError('Output for .json files not yet implemented')
 
 
+@log_function()
 def main():
     """Call functions"""
-    utils.set_logger(level=logging.INFO)
-    logger.info('Run program {}...'.format(os.path.basename(__file__)))
-
-    logger.info('Load config file...')
     cfg = read_config()
-    logger.info('Load config file... DONE')
-
-    logger.info('Get filenames...')
     fn = set_up_filenames(cfg)
-    logger.info('Get filenames... DONE')
-
-    logger.info('Calculate target diagnostic...')
     targets = calc_target(fn, cfg)
-    logger.info('Calculate target diagnostic... DONE')
-
-    logger.info('Calculate predictor diagnostics and delta matrix...')
     delta_q, delta_i = calc_predictors(fn, cfg)
-    logger.info('Calculate predictor diagnostics and delta matrix... DONE')
-
-    if cfg.sigma_i is None or cfg.sigma_q is None:
-        logger.info('Calculate sigmas...')
-        sigma_q, sigma_i = calc_sigmas(targets, delta_i, cfg)
-        logger.info('Calculate sigmas... DONE')
-    else:
-        sigma_q, sigma_i = cfg.sigma_q, cfg.sigma_i
-        logger.info('Using user sigmas: q={}, i={}'.format(sigma_q, sigma_i))
-
-    logger.info('Calculate weights and weighted mean...')
+    sigma_q, sigma_i = calc_sigmas(targets, delta_i, cfg)
     weights = calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg)
-    logger.info('Calculate weights and weighted mean... DONE')
 
-    weights[cfg.target_diagnostic] = targets  # also save targets
+    weights[cfg.target_diagnostic] = targets  # also save targets...
+    # ... and the filenames of the targets
+    temp = fn.get_filenames(
+        subset={'varn': cfg.target_diagnostic},
+        return_filters=['model', 'ensemble'])
+    weights['filename'] = xr.DataArray(
+        [ff for _, _, ff in temp],
+        coords={'model_ensemble': [f'{mm}_{ee}' for mm, ee, _ in temp]},
+        dims='model_ensemble')
 
-    logger.info('Saving data...')
     save_data(weights, cfg)
-    logger.info('Saving data... DONE')
 
     if cfg.plot:
         logger.info('Plots are at: {}'.format(
             os.path.join(cfg.plot_path, cfg.config)))
 
-    logger.info('Run program {}... Done'.format(os.path.basename(__file__)))
-
 
 if __name__ == "__main__":
+    utils.set_logger(level=logging.INFO)
     main()
