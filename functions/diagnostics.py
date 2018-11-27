@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-11-20 17:58:18 lukbrunn>
+Time-stamp: <2018-11-27 17:01:09 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -27,7 +27,7 @@ from cdo import Cdo
 cdo = Cdo()
 
 from utils_python.decorators import vectorize
-from utils_python.xarray import select_region, standardize_dimensions
+from utils_python.xarray import standardize_dimensions
 
 logger = logging.getLogger(__name__)
 REGION_DIR = '{}/../cdo_data/'.format(os.path.dirname(__file__))
@@ -50,12 +50,12 @@ def trend(data):
     return stats.linregress(xx, data).slope
 
 
-def calculate_net_radiation(infile, varns, diagn):
+def calculate_net_radiation(infile, varns, outname, diagn):
     assert varns == ('rlds', 'rlus', 'rsds', 'rsus')
-    da1 = xr.open_dataset(infile, decode_cf=False)[vanrs[0]]
-    da2 = xr.open_dataset(infile.replace(varns[0], varns[1]), decode_cf=False)[vanrs[1]]
-    da3 = xr.open_dataset(infile.replace(varns[0], varns[2]), decode_cf=False)[vanrs[2]]
-    da4 = xr.open_dataset(infile.replace(varns[0], varns[3]), decode_cf=False)[vanrs[3]]
+    da1 = xr.open_dataset(infile, decode_cf=False)[varns[0]]
+    da2 = xr.open_dataset(infile.replace(varns[0], varns[1]), decode_cf=False)[varns[1]]
+    da3 = xr.open_dataset(infile.replace(varns[0], varns[2]), decode_cf=False)[varns[2]]
+    da4 = xr.open_dataset(infile.replace(varns[0], varns[3]), decode_cf=False)[varns[3]]
 
     da = (da1-da2) + (da3-da4)
     # TODO: units; positive direction definition as attrs
@@ -168,7 +168,7 @@ def calculate_basic_diagnostic(infile, varn,
 
     if regrid:
         infile = cdo.remapbic(os.path.join(REGION_DIR, MASK),
-                                options='-b F64', input=infile)
+                              options='-b F64', input=infile)
 
     da = xr.open_dataset(infile)[varn]
     da = standardize_dimensions(da)
@@ -179,7 +179,7 @@ def calculate_basic_diagnostic(infile, varn,
         da = da.sel(time=slice(str(time_period[0]), str(time_period[1])))
 
     if season in ['JJA', 'SON', 'DJF', 'MAM']:
-        da = da.isel(time=da['time.season']==season)
+        da = da.isel(time=da['time.season'] == season)
     elif season is None or season == 'ANN':
         pass
     else:
@@ -281,6 +281,7 @@ def calculate_diagnostic(infile, diagn, base_path, **kwargs):
         outfile = get_outfile(infile=infile, **kwargs)
         return calculate_basic_diagnostic(infile, diagn, outfile, **kwargs)
     elif isinstance(diagn, dict):  # derived diagnostic
+        diagn = dict(diagn)  # leave original alone (.pop!)
         assert len(diagn.keys()) == 1
         key = list(diagn.keys())[0]
         varns = diagn.pop(key)  # basic variables
@@ -289,7 +290,7 @@ def calculate_diagnostic(infile, diagn, base_path, **kwargs):
         if diagn == 'rnet':
             tmpfile = os.path.join(
                 base_path, os.path.basename(infile).replace(varns[0], diagn))
-            ds = calculate_net_radiation(infile, varns, tmpfile, diang)
+            calculate_net_radiation(infile, varns, tmpfile, diagn)
             outfile = get_outfile(infile=tmpfile, **kwargs)
             return calculate_basic_diagnostic(tmpfile, diagn, outfile, **kwargs)
         elif kwargs['time_aggregation'] == 'CORR':
