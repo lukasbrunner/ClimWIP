@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-11-27 16:55:58 lukbrunn>
+Time-stamp: <2018-11-27 17:36:58 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -390,11 +390,12 @@ def calc_predictors(fn, cfg):
         # TODO: move this to after if cfg.obsdata
         # -> get mask from obs and apply same mask to models first!
         logger.debug('Calculate model independence matrix...')
+        diagn_key = [*diagn.keys()][0] if isinstance(diagn, dict) else diagn
         diagnostics['rmse_models'] = xr.DataArray(
-            np.empty((len(diagnostics[varn]), len(diagnostics[varn]))) * np.nan,
+            np.empty((len(diagnostics[diagn_key]), len(diagnostics[diagn_key]))) * np.nan,
             dims=('model_ensemble', 'model_ensemble'))
-        for ii, diagnostic1 in enumerate(diagnostics[varn]):
-            for jj, diagnostic2 in enumerate(diagnostics[varn]):
+        for ii, diagnostic1 in enumerate(diagnostics[diagn_key]):
+            for jj, diagnostic2 in enumerate(diagnostics[diagn_key]):
                 if ii == jj:
                     diagnostics['rmse_models'].data[ii, ii] = np.nan
                 elif ii > jj:  # the matrix is symmetric
@@ -435,7 +436,7 @@ def calc_predictors(fn, cfg):
                     regrid=True,
                 )
 
-            diff = area_weighted_mean((diagnostics[diagn] - obs[diagn])**2)
+            diff = area_weighted_mean((diagnostics[diagn_key] - obs[diagn_key])**2)
             if cfg.predictor_aggs[idx] == 'CYC':
                 diff = diff.sum('month')
             diagnostics['rmse_obs'] = np.sqrt(diff)
@@ -467,7 +468,7 @@ def calc_predictors(fn, cfg):
             diagnostics['rmse_obs'] /= normalizer
         logger.debug('Normalize data... DONE')
         diagnostics_all.append(diagnostics)
-        logger.info(f'Calculate diagnostic {diagn}{cfg.predictor_aggs[idx]}... DONE')
+        logger.info(f'Calculate diagnostic {diagn_key}{cfg.predictor_aggs[idx]}... DONE')
         # --- optional plot output for consistency checks ---
         if cfg.plot:
             with utils.LogRegion('Plotting', level='info'):
