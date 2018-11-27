@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-11-23 18:22:47 lukas>
+Time-stamp: <2018-11-27 16:55:58 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -78,9 +78,10 @@ logger = logging.getLogger(__name__)
 
 DERIVED = {
     'tasclt': ('clt', 'tas'),
+    'taspr': ('tas', 'pr'),
     'rnet': ('rlus', 'rsds', 'rlds', 'rsus'),
     'ef': ('hfls', 'hfss'),
-    'dtr': ('tasmax', 'tasmin')
+    'dtr': ('tasmax', 'tasmin'),
 }
 
 
@@ -167,7 +168,7 @@ def get_filenames(fn, varn, all_members=True):
                 logmsg = ' '.join([
                     'Removed {} from {} (not available for all',
                     'variables)']).format(ensemble, model)
-                logger.warning(logmsg)
+                logger.info(logmsg)
 
         assert len(ensembles_select) >= 1
         if not all_members:
@@ -365,7 +366,7 @@ def calc_predictors(fn, cfg):
 
             with utils.LogRegion(name=model_ensemble, level='debug'):
 
-                if diagn in DERIVED.keys():
+                if diagn in list(DERIVED.keys()):
                     diagn = {diagn: DERIVED[diagn]}
 
                 diagnostic = calculate_diagnostic(
@@ -466,10 +467,7 @@ def calc_predictors(fn, cfg):
             diagnostics['rmse_obs'] /= normalizer
         logger.debug('Normalize data... DONE')
         diagnostics_all.append(diagnostics)
-
-        logger.info('Calculate diagnostics for {} {}... DONE'.format(
-            diagn, cfg.predictor_aggs[idx]))
-
+        logger.info(f'Calculate diagnostic {diagn}{cfg.predictor_aggs[idx]}... DONE')
         # --- optional plot output for consistency checks ---
         if cfg.plot:
             with utils.LogRegion('Plotting', level='info'):
@@ -547,7 +545,7 @@ def calc_sigmas(targets, delta_i, cfg, debug=False):
     sigma_i : float
         Optimal shape parameter for independence weighting
     """
-    if cfg.sigma_i is None or cfg.sigma_q is None:
+    if cfg.sigma_i is not None or cfg.sigma_q is not None:
         logger.info('Using user sigmas: q={}, i={}'.format(cfg.sigma_q, cfg.sigma_i))
         return cfg.sigma_q, cfg.sigma_i
 
