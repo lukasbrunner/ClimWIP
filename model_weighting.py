@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-11-27 17:36:58 lukbrunn>
+Time-stamp: <2018-11-28 13:38:57 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -214,11 +214,12 @@ def set_up_filenames(cfg):
     varns = set([cfg.target_diagnostic] + cfg.predictor_diagnostics)
 
     # remove derived variables from original list and add base variables
+    del_varns, add_varns = [], []
     for varn in varns:
         if varn in DERIVED.keys():
-            varns.remove(varn)
-            for base_varn in DERIVED[varn]:
-                varns.add(base_varn)
+            del_varns.append(varn)
+            add_varns += DERIVED[varn]
+    varns = set(varns).difference(del_varns).union(add_varns)
 
     varns = list(varns)
     logger.info('Variables in analysis: {}'.format(', '.join(varns)))
