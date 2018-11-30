@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-11-27 17:34:46 lukbrunn>
+Time-stamp: <2018-11-29 12:08:17 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -300,9 +300,10 @@ def calculate_diagnostic(infile, diagn, base_path, **kwargs):
             ds1 = calculate_basic_diagnostic(infile, varns[0], outfile1, **kwargs)
 
             # !! '.../...Datasets...'.replace('tas', 'pr') -> '.../...Daprets...' !!
-            # only work on filename to avoid this behavior
             path, fn = os.path.split(infile)
-            infile2 = os.path.join(path, fn.replace(varns[0], varns[1]))
+            fn = fn.replace(f'{varns[0]}_', f'{varns[1]}_')
+            path = path.replace(f'/{varns[0]}', f'/{varns[1]}')
+            infile2 = os.path.join(path, fn)
             outfile2 = get_outfile(infile=infile2, **kwargs)
             ds2 = calculate_basic_diagnostic(infile2, varns[1], outfile2, **kwargs)
             da = xr.apply_ufunc(_corr, ds1[varns[0]], ds2[varns[1]],
