@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-11-20 18:00:20 lukbrunn>
+Time-stamp: <2018-12-03 09:50:43 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -102,7 +102,7 @@ def plot_fraction_matrix(xx, yy, data, cfg, idx=None, title=''):
     title : string, optional
     """
     boundaries = np.arange(.2, 1., .1)
-    cmap = plt.cm.get_cmap('viridis',len(boundaries))
+    cmap = plt.cm.get_cmap('viridis', len(boundaries))
     colors = list(cmap(np.arange(len(boundaries))))
     cmap = mpl.colors.ListedColormap(colors, "")
 
@@ -140,7 +140,6 @@ def plot_fraction_matrix(xx, yy, data, cfg, idx=None, title=''):
     return filename
 
 
-
 def plot_maps(ds, idx, cfg, obs=None):
     """
     Mapplot of a given diagnostic and each model.
@@ -172,10 +171,10 @@ def plot_maps(ds, idx, cfg, obs=None):
         fig, ax = plt.subplots(subplot_kw={'projection': proj})
         if obs is None:
             ds.sel(model_ensemble=model_ensemble)[diagn].plot.pcolormesh(
-                 ax=ax, transform=ccrs.PlateCarree(),
-                 cbar_kwargs={'orientation': 'horizontal',
-                              'label': 'tas (K)',
-                              'pad': .1})
+                ax=ax, transform=ccrs.PlateCarree(),
+                cbar_kwargs={'orientation': 'horizontal',
+                             'label': 'tas (K)',
+                             'pad': .1})
         else:
             (ds.sel(model_ensemble=model_ensemble)[diagn] -
              obs[diagn]).plot.pcolormesh(
@@ -241,9 +240,13 @@ def plot_weights(ds, cfg, nn, dd, sort=False):
     else:
         sorter = xx
 
-    yy1 = ds['weights'].data[sorter]
+    yy1 = ((nn/dd) / np.sum(nn/dd))[sorter]
     yy2 = (nn/nn.sum())[sorter]
     yy3 = (dd/dd.sum())[sorter]
+
+    # yy1 = (nn*dd)[sorter]
+    # yy2 = nn[sorter]
+    # yy3 = dd[sorter]
 
     ax.plot(xx, yy1, color='k', label='Weights')
     ax.plot(xx, yy2, lw=.5, color='blue', label='Performance')
