@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-11-14 11:38:50 lukbrunn>
+Time-stamp: <2018-12-01 14:15:35 lukas>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -36,7 +36,7 @@ from model_weighting.functions.diagnostics import calculate_basic_diagnostic
 
 REGION_DIR = '{}/../cdo_data/'.format(os.path.dirname(__file__))
 MASK = 'land_sea_mask_regionsmask.nc'  # 'seamask_g025.nc'
-SAVE_PATH = '/net/h2o/climphys/lukbrunn/Plots/ModelWeighting/lineplot_timeseries'
+SAVE_PATH = '/net/h2o/climphys/lukbrunn/Plots/ModelWeighting/eucp/lineplot_timeseries'
 
 variance = np.vectorize(variance, signature='(n)->()', excluded=['weights', 'biased'])
 period_ref = slice('1976', '2005')
