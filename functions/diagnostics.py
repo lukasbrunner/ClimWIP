@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-11-29 12:08:17 lukbrunn>
+Time-stamp: <2018-12-03 11:40:11 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -186,18 +186,35 @@ def calculate_basic_diagnostic(infile, varn,
         raise NotImplementedError('season={}'.format(season))
 
     if region != 'GLOBAL':
-        if isinstance(region, str):
-            region = [region]
-        masks = []
-        keys = regionmask.defined_regions.srex.map_keys(region)
-        for key in keys:
-            masks.append(
-                regionmask.defined_regions.srex.mask(da) == key)
-        mask = sum(masks) > 0
-        da = da.where(mask)
-        # NOTE: we could also use da.salem.roi here.
-        # salem.roi is super flexible, taking corner points, polygons, and shape files
-        # cut the smallest rectangular region containing all unmasked grid points
+        if (isinstance(region, str) and
+            region not in regionmask.defined_regions.srex.abbrevs):
+            # if region is not a SREX region read coordinate file
+            regionfile = '{}.txt'.format(os.path.join(REGION_DIR, region))
+            if not os.path.isfile(regionfile):
+                raise ValueError(f'{regionfile} is not a valid regionfile')
+            mask = np.loadtxt(regionfile)
+            if mask.shape != (4, 2):
+                errmsg = ' '.join([
+                    f'Wrong file content for regionfile {regionfile}! Should',
+                    'contain four lines with corners like: lon, lat'])
+                raise ValueError(errmsg)
+            lonmin, latmin = mask.min(axis=0)
+            lonmax, latmax = mask.max(axis=0)
+            if lonmax > 180 or lonmin < -180 or latmax > 90 or latmin < -90:
+                raise ValueError(f'Wrong lat/lon value in {regionfile}')
+            da = da.salem.roi(corners=((lonmin, latmin), (lonmax, latmax)))
+        else:
+            if isinstance(region, str):
+                region = [region]
+            masks = []
+            keys = regionmask.defined_regions.srex.map_keys(region)
+            for key in keys:
+                masks.append(
+                    regionmask.defined_regions.srex.mask(da) == key)
+            mask = sum(masks) == 1
+            da = da.where(mask)
+
+        # drop lats/lons with only nan (=region of interest (ROI))
         da = da.salem.subset(roi=~np.isnan(da.isel(time=0)), margin=1)
 
     if mask_ocean:
