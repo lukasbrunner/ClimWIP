@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-11-28 13:38:57 lukbrunn>
+Time-stamp: <2018-12-03 09:53:46 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -475,10 +475,10 @@ def calc_predictors(fn, cfg):
             with utils.LogRegion('Plotting', level='info'):
                 plotn = plot_rmse(diagnostics['rmse_models'], idx, cfg,
                                   diagnostics['rmse_obs'] if cfg.obsdata else None)
-                if cfg.obsdata:
-                    plot_maps(diagnostics, idx, cfg, obs=obs)
-                else:
-                    plot_maps(diagnostics, idx, cfg)
+                # if cfg.obsdata:
+                #     plot_maps(diagnostics, idx, cfg, obs=obs)
+                # else:
+                #     plot_maps(diagnostics, idx, cfg)
 
                 add_hist(diagnostics)
                 diagnostics.to_netcdf(plotn + '.nc')  # also save the data
@@ -556,15 +556,14 @@ def calc_sigmas(targets, delta_i, cfg, debug=False):
 
     # a large value means all models have equal quality -> we want this as small as possible
     sigmas_q = np.linspace(.1*tmp, 1.9*tmp, SIGMA_SIZE)
+
     # a large value means all models depend on each other, a small value means all models
     # are independent -> we want this ~delta_i
-    # TODO, NOTE: maybe we want the sigma_i with the largest spread in weights?
-    # in particular: the right sigma would deliver an about 10x higher value for denominator
-    # in the case of a model with 10 members compared to a model with only one member
-    # since we know that there is one model with 10 members, the larges element should be about
-    # 10x the smallest one!
     sigmas_i = np.linspace(.1*tmp, 1.9*tmp, SIGMA_SIZE)
-    # sigmas_i = np.array([tmp])  # DEBUG
+
+    # --- DEBUG: set some fixed values ---
+    # sigmas_q = np.array([999.])  # set very large to test independence weighting
+    # sigmas_i = np.array([tmp])  # set to median
 
     model_ensemble = targets['model_ensemble'].data
     models = [*map(lambda x: x.split('_')[0], model_ensemble)]
@@ -598,14 +597,13 @@ def calc_sigmas(targets, delta_i, cfg, debug=False):
     inside_ok = inside_ratio >= cfg.inside_ratio
 
     if not np.any(inside_ok[:, idx_i_min]):
-        logmsg = 'Perfect model test failed for {}!'.format(cfg.inside_ratio)
-
-        # raise ValueError(logmsg)
+        logmsg = f'Perfect model test failed ({inside_ratio.max()} < {cfg.inside_ratio})!'
+        raise ValueError(logmsg)
         # NOTE: force a result (probably not recommended?)
-        inside_ok = inside_ratio >= np.max(inside_ratio[:, idx_i_min])
-        logmsg += 'Setting inside_ratio to max: {}'.format(
-            np.max(inside_ratio[idx_i_min]))
-        logger.warning(logmsg)
+        # inside_ok = inside_ratio >= np.max(inside_ratio[:, idx_i_min])
+        # logmsg += 'Setting inside_ratio to max: {}'.format(
+        #     np.max(inside_ratio[idx_i_min]))
+        # logger.warning(logmsg)
 
     if idx_i_min is not None:
         idx_q_min = np.argmin(1-inside_ok[:, idx_i_min])
