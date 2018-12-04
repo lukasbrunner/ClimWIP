@@ -77,6 +77,7 @@ else:
 logger = logging.getLogger(__name__)
 
 DERIVED = {
+    'tashuss': ('huss', 'tas'),
     'tasclt': ('clt', 'tas'),
     'taspr': ('tas', 'pr'),
     'rnet': ('rlus', 'rsds', 'rlds', 'rsus'),
@@ -667,7 +668,7 @@ def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg):
         weights /= weights.sum()
     else:  # in this case delta_q is a matrix for each model as truth once
         calculate_weights_matrix = np.vectorize(
-            calculate_weights, signature='(n)->(n)(n)', excluded=[1, 2, 3])
+            calculate_weights, signature='(n)->(n),(n)', excluded=[1, 2, 3])
         numerator, denominator = calculate_weights_matrix(delta_q, delta_i, sigma_q, sigma_i)
         weights = numerator/denominator
         weights /= np.nansum(weights, axis=-1)

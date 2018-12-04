@@ -331,4 +331,8 @@ def calculate_diagnostic(infile, diagn, base_path, **kwargs):
             da = xr.apply_ufunc(_corr, ds1[varns[0]], ds2[varns[1]],
                                 input_core_dims=[['time'], ['time']],
                                 vectorize=True)
-            return da.to_dataset(name=diagn)
+            outfile3 = outfile1.replace(f'/{varns[0]}_', f'/{diagn}_')
+            ds3 = da.to_dataset(name=diagn)
+            ds3[diagn].attrs = {'units': '1'}
+            ds3.to_netcdf(outfile3)
+            return ds3
