@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-12-03 09:50:43 lukbrunn>
+Time-stamp: <2018-12-03 15:37:27 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -240,7 +240,7 @@ def plot_weights(ds, cfg, nn, dd, sort=False):
     else:
         sorter = xx
 
-    yy1 = ((nn/dd) / np.sum(nn/dd))[sorter]
+    yy1 = ((nn*dd) / np.sum(nn*dd))[sorter]
     yy2 = (nn/nn.sum())[sorter]
     yy3 = (dd/dd.sum())[sorter]
 
