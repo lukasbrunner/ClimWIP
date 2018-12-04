@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-12-03 11:40:11 lukbrunn>
+Time-stamp: <2018-12-04 09:46:52 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -171,6 +171,7 @@ def calculate_basic_diagnostic(infile, varn,
                               options='-b F64', input=infile)
 
     da = xr.open_dataset(infile)[varn]
+    enc = da.encoding
     da = standardize_dimensions(da)
     assert np.all(da['lat'].data == np.arange(-88.75, 90., 2.5))
     assert np.all(da['lon'].data == np.arange(-178.75, 180., 2.5))
@@ -222,6 +223,7 @@ def calculate_basic_diagnostic(infile, varn,
         da = da.where(sea_mask)
 
     da = standardize_units(da, varn)
+    attrs = da.attrs
 
     with warnings.catch_warnings():
         # grid cells outside the selected regions are filled with nan and will
@@ -243,6 +245,7 @@ def calculate_basic_diagnostic(infile, varn,
                                 input_core_dims=[['time']],
                                 output_core_dims=[[]],
                                 keep_attrs=True)
+            attrs['units'] = '{} year**-1'.format(attrs['units'])
         elif time_aggregation == 'CYC':
             da = da.groupby('time.month').mean('time')
         elif time_aggregation is None or time_aggregation == 'CORR':
@@ -251,6 +254,8 @@ def calculate_basic_diagnostic(infile, varn,
             NotImplementedError(f'time_aggregation={time_aggregation}')
 
     ds = da.to_dataset(name=varn)
+    ds[varn].attrs = attrs
+    ds[varn].encoding = enc
     if outfile is not None:
         ds.to_netcdf(outfile)
     return ds
