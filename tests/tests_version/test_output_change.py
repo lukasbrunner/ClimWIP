@@ -29,11 +29,10 @@ class TestOutputChange(unittest.TestCase):
     def test_output(self):
         ds = xr.open_dataset('./data/new/test_new.nc')
         ds_ref = xr.open_dataset('./data/reference/test_reference.nc')
-        del ds['time']
 
-        for varn in ds.variables:
-            np.testing.assert_array_equal(
-                ds[varn].data, ds_ref[varn].data, err_msg=varn)
+        for varn in ['weights', 'delta_q', 'delta_i', 'sigma_q', 'sigma_i']:
+            np.testing.assert_array_almost_equal(
+                ds[varn].data, ds_ref[varn].data, err_msg=varn, decimal=5)
 
 
 if __name__ == '__main__':

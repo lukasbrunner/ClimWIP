@@ -102,14 +102,15 @@ def plot_fraction_matrix(xx, yy, data, cfg, idx=None, title=''):
     title : string, optional
     """
     boundaries = np.arange(.2, 1., .1)
-    cmap = plt.cm.get_cmap('viridis',len(boundaries))
+    cmap = plt.cm.get_cmap('viridis', len(boundaries))
     colors = list(cmap(np.arange(len(boundaries))))
     cmap = mpl.colors.ListedColormap(colors, "")
 
     fig, ax = plt.subplots(figsize=(8, 8))
 
     im = ax.matshow(
-        data, cmap=cmap,
+        data+1.e-10,  # hack to include lower bounds
+        cmap=cmap,
         norm=mpl.colors.BoundaryNorm(
             boundaries,
             ncolors=len(boundaries)-1,
@@ -139,7 +140,6 @@ def plot_fraction_matrix(xx, yy, data, cfg, idx=None, title=''):
     return filename
 
 
-
 def plot_maps(ds, idx, cfg, obs=None):
     """
     Mapplot of a given diagnostic and each model.
@@ -162,37 +162,26 @@ def plot_maps(ds, idx, cfg, obs=None):
     path = os.path.join(cfg.plot_path, cfg.config, 'maps')
     os.makedirs(path, exist_ok=True)
 
+    if 'month' in ds.dims:
+        ds = ds.sum('month')
+        obs = obs.sum('month')
+
     for model_ensemble in ds['model_ensemble'].data:
         proj = ccrs.PlateCarree(central_longitude=0)
         fig, ax = plt.subplots(subplot_kw={'projection': proj})
-        try:
-            if obs is None:
-                ds.sel(model_ensemble=model_ensemble)[diagn].plot.pcolormesh(
-                     ax=ax, transform=ccrs.PlateCarree(),
-                     cbar_kwargs={'orientation': 'horizontal',
-                                  'label': '%s (%s)' %(diagn, ds[diagn].units),
-                                  'pad': .1})
-            else:
-                (ds.sel(model_ensemble=model_ensemble)[diagn] -
-                 obs[diagn]).plot.pcolormesh(
-                     ax=ax, transform=ccrs.PlateCarree(),
-                     cbar_kwargs={'orientation': 'horizontal',
-                                  'label': '%s (%s)' %(diagn, ds[diagn].units),
-                                  'pad': .1})
-        except ValueError: # time not zero -> mean over time
-            if obs is None:
-                ds.sel(model_ensemble=model_ensemble)[diagn].mean('time').plot.pcolormesh(
-                     ax=ax, transform=ccrs.PlateCarree(),
-                     cbar_kwargs={'orientation': 'horizontal',
-                                  'label': '%s (%s)' %(diagn, ds[diagn].units),
-                                  'pad': .1})
-            else:
-                ((ds.sel(model_ensemble=model_ensemble)[diagn] -
-                  obs[diagn]).mean('time')).plot.pcolormesh(
-                     ax=ax, transform=ccrs.PlateCarree(),
-                     cbar_kwargs={'orientation': 'horizontal',
-                                  'label': '%s (%s)' %(diagn, ds[diagn].units),
-                                  'pad': .1})
+        if obs is None:
+            ds.sel(model_ensemble=model_ensemble)[diagn].plot.pcolormesh(
+                 ax=ax, transform=ccrs.PlateCarree(),
+                 cbar_kwargs={'orientation': 'horizontal',
+                              'label': 'tas (K)',
+                              'pad': .1})
+        else:
+            (ds.sel(model_ensemble=model_ensemble)[diagn] -
+             obs[diagn]).plot.pcolormesh(
+                 ax=ax, transform=ccrs.PlateCarree(),
+                 cbar_kwargs={'orientation': 'horizontal',
+                              'label': 'tas (K)',
+                              'pad': .1})
         ax.coastlines()
         ax.add_feature(cartopy.feature.BORDERS)
         xx, yy = np.meshgrid(ds['lon'], ds['lat'])
@@ -201,10 +190,8 @@ def plot_maps(ds, idx, cfg, obs=None):
         longitude_formatter = LongitudeFormatter()
         latitude_formatter = LatitudeFormatter()
 
-        ax.set_xticks(np.arange(ds['lon'].min()-5, ds['lon'].max()+11, 10),
-                      crs=proj)
-        ax.set_yticks(np.arange(ds['lat'].min()-5, ds['lat'].max()+11, 10),
-                      crs=proj)
+        ax.set_xticks(np.arange(ds['lon'].min()-5, ds['lon'].max()+11, 10), crs=proj)
+        ax.set_yticks(np.arange(ds['lat'].min()-5, ds['lat'].max()+11, 10), crs=proj)
         ax.xaxis.set_ticks_position('both')
         ax.yaxis.set_ticks_position('both')
         ax.xaxis.set_major_formatter(longitude_formatter)
@@ -252,7 +239,7 @@ def plot_weights(ds, cfg, nn, dd, sort=False):
     else:
         sorter = xx
 
-    yy1 = ds['weights'].data[sorter]
+    yy1 = ((nn*dd) / np.sum(nn*dd))[sorter]
     yy2 = (nn/nn.sum())[sorter]
     yy3 = (dd/dd.sum())[sorter]
 
