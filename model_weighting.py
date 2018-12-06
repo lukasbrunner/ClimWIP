@@ -78,8 +78,8 @@ logger = logging.getLogger(__name__)
 DERIVED = {
     'tashuss': ('huss', 'tas'),
     'tasclt': ('clt', 'tas'),
-    'taspr': ('tas', 'pr'),
-    'rnet': ('rlus', 'rsds', 'rlds', 'rsus'),
+    'taspr': ('pr', 'tas'),
+    'rnet': ('rlds', 'rlus', 'rsds', 'rsus'),
     'ef': ('hfls', 'hfss'),
     'dtr': ('tasmax', 'tasmin'),
 }
@@ -303,10 +303,6 @@ def calc_target(fn, cfg):
                 )
                 # change historical to future
                 target[cfg.target_diagnostic] -= target_hist[cfg.target_diagnostic]
-
-        except Exception as exc:
-            logger.error('Exception at model: {}'.format(model_ensemble))
-            raise exc
 
         target['model_ensemble'] = xr.DataArray([model_ensemble], dims='model_ensemble')
         targets.append(target)
