@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-29 15:09:55 lukas>
+Time-stamp: <2018-12-05 11:46:09 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -410,7 +410,7 @@ def calc_predictors(fn, cfg):
             filename = os.path.join(
                 cfg.obs_path, '{}_mon_{}_g025.nc'.format(
                     varn, cfg.obsdata))
-          
+
             with utils.LogRegion('Calculate diagnostic for observations', level='debug'):
                 obs = calculate_diagnostic(
                     filename, diagn, base_path,
