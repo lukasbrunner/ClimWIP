@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-11-26 11:40:12 lukbrunn>
+Time-stamp: <2018-12-08 17:14:08 lukas>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -76,7 +76,7 @@ def calculate_weights_sigmas(distances, sigmas_q, sigmas_i):
     assert len(sigmas_q.shape) == 1, 'sigmas_q needs to be a 1D array'
     assert len(sigmas_i.shape) == 1, 'sigmas_i needs to be a 1D array'
 
-    weights = np.empty((len(sigmas_q), len(sigmas_i)) + distances.shape)*np.nan
+    weights = np.zeros((len(sigmas_q), len(sigmas_i)) + distances.shape) * np.nan
     for idx_q, sigma_q in enumerate(sigmas_q):
         for idx_i, sigma_i in enumerate(sigmas_i):
             for idx_d, dd in enumerate(distances):
@@ -114,7 +114,7 @@ def calculate_independence_ensembles(distances, sigmas_i):
 
     sigma_q = sigmas_i[0]  # dummy
     dd = distances[0]  # dummy
-    weights = np.empty((len(sigmas_i), len(dd)))*np.nan
+    weights = np.zeros((len(sigmas_i), len(dd))) * np.nan
     for idx_i, sigma_i in enumerate(sigmas_i):
         _, de = calculate_weights(dd, distances, sigma_q, sigma_i)
         weights[idx_i, :] = de
