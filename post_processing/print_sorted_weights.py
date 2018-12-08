@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-11-30 14:05:07 lukbrunn>
+Time-stamp: <2018-12-05 17:40:41 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -17,6 +17,7 @@ import os
 import argparse
 import numpy as np
 import xarray as xr
+from tabulate import tabulate
 
 parser = argparse.ArgumentParser(
     description=__doc__,
@@ -33,13 +34,16 @@ parser.add_argument(
     help='Only show the given number of the best and worst models')
 parser.add_argument(
     '--relative', '-r', dest='relative', action='store_true',
-    help='Plot how often a model is in a given percentile')
+    help='Print how often a model is in a given percentile')
+parser.add_argument(
+    '--latex', '-l', dest='latex', action='store_true',
+    help='Print a LaTeX table instead')
 
 args = parser.parse_args()
 filenames = [os.path.join(args.base_path, fn) for fn in args.filenames]
 filenames = [fn if fn.endswith('.nc') else '{}.nc'.format(fn) for fn in filenames]
 
-if not args.relative:
+if not args.relative and not args.latex:
     lines = None
     for filename in filenames:
         ds = xr.open_dataset(filename)
@@ -62,6 +66,15 @@ if not args.relative:
 
     for line in lines:
         print(line)
+
+elif not args.relative and args.latex:
+    columns = []
+    for filename in filenames:
+        ds = xr.open_dataset(filename)
+        sorter = np.argsort(ds['weights'].data)[::-1]
+        columns.append(ds['model_ensemble'].data[sorter])
+    rows = list(np.swapaxes(np.array(columns), 0, 1))
+    print(tabulate(rows, tablefmt='latex'))
 
 else:
     models = xr.open_dataset(filenames[0])['model_ensemble'].data
