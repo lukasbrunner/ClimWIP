@@ -58,8 +58,16 @@ def calculate_net_radiation(infile, varns, outname, diagn):
     da4 = xr.open_dataset(infile.replace(varns[0], varns[3]), decode_cf=False)[varns[3]]
 
     da = (da1-da2) + (da3-da4)
+    da.attrs['units'] = da1.units
+    try:
+        da.attrs['_FillValue'] = da1._FillValue
+    except AttributeError:
+        da.attrs['_FillValue'] = 1e20
+    da.attrs['long_name'] = 'Surface Downwelling Net Radiation'
+    da.attrs['standard_name'] = 'surface_downwelling_net_flux_in_air'
     # TODO: units; positive direction definition as attrs
     ds = da.to_dataset(name=diagn)
+
     ds.to_netcdf(outname)
 
 

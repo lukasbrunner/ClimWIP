@@ -78,8 +78,8 @@ logger = logging.getLogger(__name__)
 DERIVED = {
     'tashuss': ('huss', 'tas'),
     'tasclt': ('clt', 'tas'),
-    'taspr': ('tas', 'pr'),
-    'rnet': ('rlus', 'rsds', 'rlds', 'rsus'),
+    'taspr': ('pr', 'tas'),
+    'rnet': ('rlds', 'rlus', 'rsds', 'rsus'),
     'ef': ('hfls', 'hfss'),
     'dtr': ('tasmax', 'tasmin'),
 }
