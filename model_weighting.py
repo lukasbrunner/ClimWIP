@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-12-11 11:32:50 lukbrunn>
+Time-stamp: <2018-12-11 11:46:30 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -116,7 +116,7 @@ def read_args():
         '--filename', '-f', dest='filename', default='configs/config.ini',
         help='Relative or absolute path/filename.ini of the config file.')
     parser.add_argument(
-        '--logging-level', '-log-level', dest='log_level', default='info',
+        '--logging-level', '-log-level', dest='log_level', default=20,
         type=str, choices=['error', 'warning', 'info', 'debug'],
         help='Set logging level')
     parser.add_argument(
