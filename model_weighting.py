@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-12-05 11:46:09 lukbrunn>
+Time-stamp: <2018-12-11 11:32:50 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -104,7 +104,7 @@ def test_config(cfg):
     return None
 
 
-def read_config():
+def read_args():
     """Read the given configuration from the config file"""
     parser = argparse.ArgumentParser(
         description=__doc__,
@@ -115,7 +115,17 @@ def read_config():
     parser.add_argument(
         '--filename', '-f', dest='filename', default='configs/config.ini',
         help='Relative or absolute path/filename.ini of the config file.')
-    args = parser.parse_args()
+    parser.add_argument(
+        '--logging-level', '-log-level', dest='log_level', default='info',
+        type=str, choices=['error', 'warning', 'info', 'debug'],
+        help='Set logging level')
+    parser.add_argument(
+        '--logging-file', '-log-file', dest='log_file', default=None,
+        type=str, help='Redirect logging output to given file')
+    return parser.parse_args()
+
+
+def read_config(args):
     cfg = utils.read_config(args.config, args.filename)
     utils.log_parser(cfg)
     test_config(cfg)
@@ -275,7 +285,7 @@ def calc_target(fn, cfg):
     for filename, model_ensemble in zip(*get_filenames(
             fn, cfg.target_diagnostic, cfg.ensembles)):
 
-        with utils.LogRegion(name=model_ensemble, level='debug'):
+        with utils.LogTime(model_ensemble, level='debug'):
 
             target = calculate_diagnostic(
                 filename, cfg.target_diagnostic, base_path,
@@ -361,7 +371,7 @@ def calc_predictors(fn, cfg):
         for filename, model_ensemble in zip(*get_filenames(
                 fn, varn, cfg.ensembles)):
 
-            with utils.LogRegion(name=model_ensemble, level='debug'):
+            with utils.LogTime(model_ensemble, level='debug'):
 
                 if diagn in list(DERIVED.keys()):
                     diagn = {diagn: DERIVED[diagn]}
@@ -389,7 +399,7 @@ def calc_predictors(fn, cfg):
         logger.debug('Calculate model independence matrix...')
         diagn_key = [*diagn.keys()][0] if isinstance(diagn, dict) else diagn
         diagnostics['rmse_models'] = xr.DataArray(
-            np.empty((len(diagnostics[diagn_key]), len(diagnostics[diagn_key]))) * np.nan,
+            np.zeros((len(diagnostics[diagn_key]), len(diagnostics[diagn_key]))) * np.nan,
             dims=('model_ensemble', 'model_ensemble'))
         for ii, diagnostic1 in enumerate(diagnostics[diagn_key]):
             for jj, diagnostic2 in enumerate(diagnostics[diagn_key]):
@@ -411,7 +421,7 @@ def calc_predictors(fn, cfg):
                 cfg.obs_path, '{}_mon_{}_g025.nc'.format(
                     varn, cfg.obsdata))
 
-            with utils.LogRegion('Calculate diagnostic for observations', level='debug'):
+            with utils.LogTime('Calculate diagnostic for observations', level='debug'):
                 obs = calculate_diagnostic(
                     filename, diagn, base_path,
                     time_period=(
@@ -447,11 +457,11 @@ def calc_predictors(fn, cfg):
             normalizer = np.nanmean(normalizer)
         elif cfg.performance_normalize.lower() == 'map':  # TODO: needs testing!
             diagnostics['rmse_models'].data = np.interp(
-                 diagnostics['rmse_models'], [np.nanmin(normalizer),
-                                              np.nanmax(normalizer)], [0, 1])
+                diagnostics['rmse_models'], [np.nanmin(normalizer),
+                                             np.nanmax(normalizer)], [0, 1])
             diagnostics['rmse_obs'].data = np.interp(
-                 diagnostics['rmse_obs'], [np.nanmin(normalizer),
-                                           np.nanmax(normalizer)], [0, 1])
+                diagnostics['rmse_obs'], [np.nanmin(normalizer),
+                                          np.nanmax(normalizer)], [0, 1])
         else:
             raise ValueError
 
@@ -465,7 +475,7 @@ def calc_predictors(fn, cfg):
         logger.info(f'Calculate diagnostic {diagn_key}{cfg.predictor_aggs[idx]}... DONE')
         # --- optional plot output for consistency checks ---
         if cfg.plot:
-            with utils.LogRegion('Plotting', level='info'):
+            with utils.LogTime('Plotting', level='info'):
                 plotn = plot_rmse(diagnostics['rmse_models'], idx, cfg,
                                   diagnostics['rmse_obs'] if cfg.obsdata else None)
                 # if cfg.obsdata:
@@ -584,12 +594,12 @@ def calc_sigmas(targets, delta_i, cfg, debug=False):
     inside_ok = inside_ratio >= cfg.inside_ratio
 
     if not np.any(inside_ok[:, idx_i_min]):
-        logmsg = f'Perfect model test failed ({inside_ratio.max()} < {cfg.inside_ratio})!'
+        logmsg = f'Perfect model test failed ({inside_ratio[:, idx_i_min].max():.4f} < {cfg.inside_ratio:.4f})!'
         raise ValueError(logmsg)
         # NOTE: force a result (probably not recommended?)
         # inside_ok = inside_ratio >= np.max(inside_ratio[:, idx_i_min])
-        # logmsg += 'Setting inside_ratio to max: {}'.format(
-        #     np.max(inside_ratio[idx_i_min]))
+        # logmsg += ' Setting inside_ratio to max: {}'.format(
+        #     np.max(inside_ratio[:, idx_i_min]))
         # logger.warning(logmsg)
 
     if idx_i_min is not None:
@@ -701,34 +711,28 @@ def save_data(ds, cfg, dtype='nc'):
         raise NotImplementedError('Output for .json files not yet implemented')
 
 
-def main():
+def main(args):
     """Call functions"""
-    utils.set_logger(level=logging.INFO)
-    logger.info('Run program {}...'.format(os.path.basename(__file__)))
+    log = utils.LogTime()
 
-    logger.info('Load config file...')
-    cfg = read_config()
-    logger.info('Load config file... DONE')
+    log.start('main().read_config()')
+    cfg = read_config(args)
 
-    logger.info('Get filenames...')
+    log.start('main().set_up_filenames(cfg)')
     fn = set_up_filenames(cfg)
-    logger.info('Get filenames... DONE')
 
-    logger.info('Calculate target diagnostic...')
+    log.start('main().calc_target(fn, cfg)')
     targets = calc_target(fn, cfg)
-    logger.info('Calculate target diagnostic... DONE')
 
-    logger.info('Calculate predictor diagnostics and delta matrix...')
+    log.start('main().calc_predictors(fn, cfg)')
     delta_q, delta_i = calc_predictors(fn, cfg)
-    logger.info('Calculate predictor diagnostics and delta matrix... DONE')
 
-    logger.info('Calculate sigmas...')
+    log.start('main().calc_sigmas(targets, delta_i, cfg)')
     sigma_q, sigma_i = calc_sigmas(targets, delta_i, cfg)
-    logger.info('Calculate sigmas... DONE')
 
-    logger.info('Calculate weights and weighted mean...')
+    log.start('main().calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg)')
     weights = calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg)
-    logger.info('Calculate weights and weighted mean... DONE')
+    log.stop
 
     weights[cfg.target_diagnostic] = targets  # also save targets...
     # ... and the filenames of the targets
@@ -740,16 +744,17 @@ def main():
         coords={'model_ensemble': [f'{mm}_{ee}' for mm, ee, _ in temp]},
         dims='model_ensemble')
 
-    logger.info('Saving data...')
+    log.start('main().save_data(weights, cfg)')
     save_data(weights, cfg)
-    logger.info('Saving data... DONE')
+    log.stop
 
     if cfg.plot:
         logger.info('Plots are at: {}'.format(
             os.path.join(cfg.plot_path, cfg.config)))
 
-    logger.info('Run program {}... Done'.format(os.path.basename(__file__)))
-
 
 if __name__ == "__main__":
-    main()
+    args = read_args()
+    utils.set_logger(level=args.log_level, filename=args.log_file)
+    with utils.LogTime(os.path.basename(__file__).replace('py', 'main()')):
+        main(args)
