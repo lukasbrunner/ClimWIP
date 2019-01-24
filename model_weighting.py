@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-12-11 11:46:30 lukbrunn>
+Time-stamp: <2019-01-14 15:43:48 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -37,6 +37,9 @@ import logging
 import argparse
 import numpy as np
 import xarray as xr
+
+import matplotlib as mpl
+mpl.use('Agg')
 
 from utils_python import utils
 from utils_python.get_filenames import Filenames
