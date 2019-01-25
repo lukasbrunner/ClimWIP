@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-01-24 16:13:36 lukbrunn>
+Time-stamp: <2019-01-25 19:55:18 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -443,7 +443,7 @@ def calc_predictors(fn, cfg):
 
             try:
                 cfg.obsdata_spread
-            except NameError:
+            except AttributeError:
                 cfg.obsdata_spread = None
             if cfg.obsdata_spread is not None:
                 filename = os.path.join(
