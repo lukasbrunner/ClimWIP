@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-01-14 15:43:48 lukbrunn>
+Time-stamp: <2019-01-24 16:13:36 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -44,6 +44,7 @@ mpl.use('Agg')
 from utils_python import utils
 from utils_python.get_filenames import Filenames
 from utils_python.xarray import add_hist, area_weighted_mean
+from utils_python.decorators import vectorize
 
 # I still don't understand how to properly do this :(
 # https://stackoverflow.com/questions/14132789/relative-imports-for-the-billionth-time
@@ -438,7 +439,57 @@ def calc_predictors(fn, cfg):
                     regrid=True,
                 )
 
-            diff = area_weighted_mean((diagnostics[diagn_key] - obs[diagn_key])**2)
+            diff = diagnostics[diagn_key] - obs[diagn_key]
+
+            try:
+                cfg.obsdata_spread
+            except NameError:
+                cfg.obsdata_spread = None
+            if cfg.obsdata_spread is not None:
+                filename = os.path.join(
+                    cfg.obs_path, '{}_mon_{}_g025_spread.nc'.format(
+                        varn, cfg.obsdata))
+
+                with utils.LogTime('Calculate diagnostic for observations', level='debug'):
+                    obs_spread = calculate_diagnostic(
+                        filename, diagn, base_path,
+                        time_period=(
+                            cfg.predictor_startyears[idx],
+                            cfg.predictor_endyears[idx]),
+                        season=cfg.predictor_seasons[idx],
+                        time_aggregation=cfg.predictor_aggs[idx],
+                        mask_ocean=cfg.predictor_masko[idx],
+                        region=cfg.region,
+                        overwrite=cfg.overwrite,
+                        regrid=True,
+                    )[diagn_key]
+
+                @vectorize('(n,m),(n,m)->(n,m)')
+                def correct_for_spread(data, spread):
+                    """Correct for the spread in the observations.
+
+                    Set differences inside of the spread to zero and move all
+                    other differences so that they use the spread boundaries as
+                    reference (instead of the mean).
+
+                    Info
+                    ----
+                    old: -8  -4   0123456789 <- distances
+                          o   |---x-o-|o   o <- o...model; x...obs; |...spread
+                    new: -4   00000000012345 <- new distances
+                    """
+                    spread = .5*spread
+                    not_significant = np.abs(data) <= spread
+                    data = data - np.sign(data)*spread
+                    data[not_significant] = 0
+                    return data
+
+                diff = xr.apply_ufunc(
+                    correct_for_spread, diff, obs_spread,
+                    input_core_dims=[['lat', 'lon'], ['lat', 'lon']],
+                    output_core_dims=[['lat', 'lon']])
+
+            diff = area_weighted_mean(diff**2)
             if cfg.predictor_aggs[idx] == 'CYC':
                 diff = diff.sum('month')
             diagnostics['rmse_obs'] = np.sqrt(diff)
@@ -481,10 +532,10 @@ def calc_predictors(fn, cfg):
             with utils.LogTime('Plotting', level='info'):
                 plotn = plot_rmse(diagnostics['rmse_models'], idx, cfg,
                                   diagnostics['rmse_obs'] if cfg.obsdata else None)
-                # if cfg.obsdata:
-                #     plot_maps(diagnostics, idx, cfg, obs=obs)
-                # else:
-                #     plot_maps(diagnostics, idx, cfg)
+                if cfg.obsdata:
+                    plot_maps(diagnostics, idx, cfg, obs=obs)
+                else:
+                    plot_maps(diagnostics, idx, cfg)
 
                 add_hist(diagnostics)
                 diagnostics.to_netcdf(plotn + '.nc')  # also save the data
