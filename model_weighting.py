@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-01-25 19:55:18 lukbrunn>
+Time-stamp: <2019-01-28 09:47:02 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -87,6 +87,8 @@ DERIVED = {
     'ef': ('hfls', 'hfss'),
     'dtr': ('tasmax', 'tasmin'),
 }
+REGRID_OBS = [
+    'ERA-Interim']
 
 
 def test_config(cfg):
@@ -436,7 +438,7 @@ def calc_predictors(fn, cfg):
                     mask_ocean=cfg.predictor_masko[idx],
                     region=cfg.region,
                     overwrite=cfg.overwrite,
-                    regrid=True,
+                    regrid=cfg.obsdata in REGRID_OBS,
                 )
 
             diff = diagnostics[diagn_key] - obs[diagn_key]

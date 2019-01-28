@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-12-11 16:48:08 lukbrunn>
+Time-stamp: <2019-01-28 09:48:56 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -87,6 +87,8 @@ def standardize_units(da, varn):
         if unit == 'kg m-2 s-1':
             da.data *= 24*60*60
             da.attrs = attrs
+            da.attrs['units'] = newunit
+        elif unit == 'mm':  # E-OBS
             da.attrs['units'] = newunit
         elif unit == newunit:
             pass
@@ -222,6 +224,11 @@ def calculate_basic_diagnostic(infile, varn,
                     regionmask.defined_regions.srex.mask(da) == key)
             mask = sum(masks) == 1
             da = da.where(mask)
+
+        if np.all(np.isnan(da.isel(time=0))):
+            errmsg = 'All grid points masked! Wrong masking settings?'
+            logger.error(errmsg)
+            raise ValueError(errmsg)
 
         # drop lats/lons with only nan (=region of interest (ROI))
         da = da.salem.subset(roi=~np.isnan(da.isel(time=0)), margin=1)
