@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-01-28 09:47:02 lukbrunn>
+Time-stamp: <2019-01-28 09:53:46 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -443,11 +443,13 @@ def calc_predictors(fn, cfg):
 
             diff = diagnostics[diagn_key] - obs[diagn_key]
 
+            # DELETE: once all config contain obsdata_spread this can be deleted
             try:
                 cfg.obsdata_spread
             except AttributeError:
-                cfg.obsdata_spread = None
-            if cfg.obsdata_spread is not None:
+                cfg.obsdata_spread = False
+            # ---
+            if cfg.obsdata_spread:
                 filename = os.path.join(
                     cfg.obs_path, '{}_mon_{}_g025_spread.nc'.format(
                         varn, cfg.obsdata))
@@ -463,7 +465,7 @@ def calc_predictors(fn, cfg):
                         mask_ocean=cfg.predictor_masko[idx],
                         region=cfg.region,
                         overwrite=cfg.overwrite,
-                        regrid=True,
+                        regrid=cfg.obsdata in REGRID_OBS,
                     )[diagn_key]
 
                 @vectorize('(n,m),(n,m)->(n,m)')
