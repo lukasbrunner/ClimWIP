@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-01-28 09:53:46 lukbrunn>
+Time-stamp: <2019-02-13 12:22:12 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -35,6 +35,7 @@ Geophysical Research: Atmospheres, 123, 4509–4526. doi:10.1029/2017JD027992.
 import os
 import logging
 import argparse
+import warnings
 import numpy as np
 import xarray as xr
 
@@ -423,39 +424,23 @@ def calc_predictors(fn, cfg):
         if cfg.obsdata is not None:
             logger.debug('Read observations & calculate model quality...')
 
-            filename = os.path.join(
-                cfg.obs_path, '{}_mon_{}_g025.nc'.format(
-                    varn, cfg.obsdata))
+            if isinstance(cfg.obsdata, str):
+                cfg.obsdata = [cfg.obsdata]
+                cfg.obs_path = [cfg.obs_path]
+                if len(cfg.obsdata) != len(cfg.obs_path):
+                    errmsg = 'obsdata and obs_path need to have same length!'
+                    logger.error(errmsg)
+                    raise ValueError(errmsg)
 
-            with utils.LogTime('Calculate diagnostic for observations', level='debug'):
-                obs = calculate_diagnostic(
-                    filename, diagn, base_path,
-                    time_period=(
-                        cfg.predictor_startyears[idx],
-                        cfg.predictor_endyears[idx]),
-                    season=cfg.predictor_seasons[idx],
-                    time_aggregation=cfg.predictor_aggs[idx],
-                    mask_ocean=cfg.predictor_masko[idx],
-                    region=cfg.region,
-                    overwrite=cfg.overwrite,
-                    regrid=cfg.obsdata in REGRID_OBS,
-                )
+            obs_list = []
+            for obs_path, obsdata in zip(cfg.obs_path, cfg.obsdata):
 
-            diff = diagnostics[diagn_key] - obs[diagn_key]
-
-            # DELETE: once all config contain obsdata_spread this can be deleted
-            try:
-                cfg.obsdata_spread
-            except AttributeError:
-                cfg.obsdata_spread = False
-            # ---
-            if cfg.obsdata_spread:
                 filename = os.path.join(
-                    cfg.obs_path, '{}_mon_{}_g025_spread.nc'.format(
-                        varn, cfg.obsdata))
+                    obs_path, '{}_mon_{}_g025.nc'.format(
+                        varn, obsdata))
 
-                with utils.LogTime('Calculate diagnostic for observations', level='debug'):
-                    obs_spread = calculate_diagnostic(
+                with utils.LogTime(f'Calculate diagnostic for {obsdata}', level='debug'):
+                    obs = calculate_diagnostic(
                         filename, diagn, base_path,
                         time_period=(
                             cfg.predictor_startyears[idx],
@@ -465,32 +450,33 @@ def calc_predictors(fn, cfg):
                         mask_ocean=cfg.predictor_masko[idx],
                         region=cfg.region,
                         overwrite=cfg.overwrite,
-                        regrid=cfg.obsdata in REGRID_OBS,
-                    )[diagn_key]
+                        regrid=obsdata in REGRID_OBS,
+                    )
+                    obs_list.append(obs)
+            obs = xr.concat(obs_list, dim='dataset_dim')
+            obs_min = obs.min('dataset_dim', skipna=False)
+            obs_max = obs.max('dataset_dim', skipna=False)
 
-                @vectorize('(n,m),(n,m)->(n,m)')
-                def correct_for_spread(data, spread):
-                    """Correct for the spread in the observations.
+            @vectorize('(n,m),(n,m),(n,m)->(n,m)')
+            def distance_uncertainty(var, obs_min, obs_max):
+                """Account for uncertainties in the observations by setting
+                distances within the observational spread to zero"""
+                lower = var < obs_min
+                higher = var > obs_max
+                between = (var >= obs_min) & (var <= obs_max)
+                diff = np.zeros_like(var) * np.nan
+                diff[lower] = var[lower] - obs_min[lower]
+                diff[higher] = var[higher] - obs_max[higher]
+                diff[between] = 0.
+                # NaN in either array results in NaN in diff
+                return diff
 
-                    Set differences inside of the spread to zero and move all
-                    other differences so that they use the spread boundaries as
-                    reference (instead of the mean).
-
-                    Info
-                    ----
-                    old: -8  -4   0123456789 <- distances
-                          o   |---x-o-|o   o <- o...model; x...obs; |...spread
-                    new: -4   00000000012345 <- new distances
-                    """
-                    spread = .5*spread
-                    not_significant = np.abs(data) <= spread
-                    data = data - np.sign(data)*spread
-                    data[not_significant] = 0
-                    return data
-
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore')
                 diff = xr.apply_ufunc(
-                    correct_for_spread, diff, obs_spread,
-                    input_core_dims=[['lat', 'lon'], ['lat', 'lon']],
+                    distance_uncertainty, diagnostics[diagn_key],
+                    obs_min[diagn_key], obs_max[diagn_key],
+                    input_core_dims=[['lat', 'lon'], ['lat', 'lon'], ['lat', 'lon']],
                     output_core_dims=[['lat', 'lon']])
 
             diff = area_weighted_mean(diff**2)
@@ -535,9 +521,9 @@ def calc_predictors(fn, cfg):
         if cfg.plot:
             with utils.LogTime('Plotting', level='info'):
                 plotn = plot_rmse(diagnostics['rmse_models'], idx, cfg,
-                                  diagnostics['rmse_obs'] if cfg.obsdata else None)
-                if cfg.obsdata:
-                    plot_maps(diagnostics, idx, cfg, obs=obs)
+                                  diagnostics['rmse_obs'] if cfg.obsdata is not None else None)
+                if cfg.obsdata is not None and len(cfg.obsdata) == 1:
+                    plot_maps(diagnostics, idx, cfg, obs=obs.isel(dataset_dim=0))
                 else:
                     plot_maps(diagnostics, idx, cfg)
 

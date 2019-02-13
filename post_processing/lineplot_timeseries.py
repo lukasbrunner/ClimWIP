@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-01-29 10:42:25 lukbrunn>
+Time-stamp: <2019-02-13 12:11:37 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -92,39 +92,45 @@ def read_data(cfg, change):
         ds['time'].data = ds['time'].dt.year.data
         ds_list.append(ds)
         i += 1
-        # if i == 10:  # DEBUG
-        #     break
     return xr.concat(ds_list, dim='model_ensemble')
 
 
 def read_obs(cfg, change):
-    varn = cfg.target_diagnostic
-    path = cfg.obs_path
-    source = cfg.obsdata
-    filename = os.path.join(path, '{}_mon_{}_g025.nc'.format(varn, source))
-    if not os.path.isfile(filename):
+
+    if cfg.obsdata is None:
         return None
 
-    ds = calculate_basic_diagnostic(
-        filename, varn,
-        outfile=None,
-        time_period=None,
-        season=cfg.target_season,
-        time_aggregation=None,
-        mask_ocean=cfg.target_masko,
-        region=cfg.region,
-        regrid=cfg.target_diagnostic in REGRID_OBS)
+    if isinstance(cfg.obsdata, str):
+        cfg.obsdata = [cfg.obsdata]
+        cfg.obs_path = [cfg.obs_path]
 
-    with warnings.catch_warnings():
-        warnings.filterwarnings('ignore', message='Mean of empty slice')
-        ds = ds.resample(time='1a').mean()
-    ds = area_weighted_mean(ds)
-    ds = ds.sel(time=slice('1950', None))
-    if change:
-        ds[varn] -= ds[varn].sel(time=slice(
-            str(cfg.target_startyear_ref),
-            str(cfg.target_endyear_ref))).mean('time')
-    ds['time'].data = ds['time'].dt.year.data
+    varn = cfg.target_diagnostic
+    ds_list = []
+    for obs_path, obsdata in zip(cfg.obs_path, cfg.obsdata):
+        filename = os.path.join(obs_path, '{}_mon_{}_g025.nc'.format(varn, obsdata))
+
+        ds = calculate_basic_diagnostic(
+            filename, varn,
+            outfile=None,
+            time_period=None,
+            season=cfg.target_season,
+            time_aggregation=None,
+            mask_ocean=cfg.target_masko,
+            region=cfg.region,
+            regrid=cfg.target_diagnostic in REGRID_OBS)
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', message='Mean of empty slice')
+            ds = ds.resample(time='1a').mean()
+        ds = area_weighted_mean(ds)
+        ds = ds.sel(time=slice('1950', None))
+        if change:
+            ds[varn] -= ds[varn].sel(time=slice(
+                str(cfg.target_startyear_ref),
+                str(cfg.target_endyear_ref))).mean('time')
+        ds['time'].data = ds['time'].dt.year.data
+        ds_list.append(ds)
+    ds = xr.concat(ds_list, dim='dataset')
     return ds
 
 
@@ -137,7 +143,7 @@ def read_weights(model_ensemble, cfg):
 
 def plot(cfg, args):
     varn = cfg.target_diagnostic
-    fig, ax = plt.subplots()#figsize=(15, 5))
+    fig, ax = plt.subplots()  # figsize=(15, 5))
 
     ds = read_data(cfg, change=args.change)
     data, xx = ds[varn].data, ds['time'].data
@@ -205,10 +211,6 @@ def plot(cfg, args):
         xx,
         quantile2(data, .05, weights),
         quantile2(data, .95, weights),
-        # (np.average(data, weights=weights, axis=0) -
-        #  np.sqrt(variance(data.swapaxes(0, 1), weights=weights))),
-        # (np.average(data, weights=weights, axis=0) +
-        #  np.sqrt(variance(data.swapaxes(0, 1), weights=weights))),
         color='darkred',
         alpha=.2,
         zorder=200,
@@ -222,18 +224,28 @@ def plot(cfg, args):
 
     # --- observations ---
     obs = read_obs(cfg, change=args.change)
-    if obs is not None:
+    if obs is not None and len(obs['dataset']) == 1:
         [l2] = ax.plot(
-            obs['time'].data, obs[varn].data,
+            obs['time'].data,
+            obs.isel(dataset_dim=0)[varn].data,
             color='k',
             lw=2,
+            zorder=3000,
+        )
+    elif obs is not None:
+        min_ = obs.min('dataset', skipna=False)
+        max_ = obs.max('dataset', skipna=False)
+        l2 = ax.fill_between(
+            obs['time'].data,
+            min_[varn].data,
+            max_[varn].data,
+            color='k',
             zorder=3000,
         )
 
     ax.set_xlabel('Year')
     ax.set_xlim(1950, 2060)
 
-    # ax.set_ylabel('Temperature ($\degree$C)')
     if args.change:
         ax.set_ylim(-4, 8)
     else:
