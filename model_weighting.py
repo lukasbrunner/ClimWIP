@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-02-13 12:22:12 lukbrunn>
+Time-stamp: <2019-02-13 14:50:02 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -302,7 +302,7 @@ def calc_target(fn, cfg):
                 season=cfg.target_season,
                 time_aggregation=cfg.target_agg,
                 mask_ocean=cfg.target_masko,
-                region=cfg.region,
+                region=cfg.target_region,
                 overwrite=cfg.overwrite,
             )
 
@@ -315,7 +315,7 @@ def calc_target(fn, cfg):
                     season=cfg.target_season,
                     time_aggregation=cfg.target_agg,
                     mask_ocean=cfg.target_masko,
-                    region=cfg.region,
+                    region=cfg.target_region,
                     overwrite=cfg.overwrite,
                 )
                 # change historical to future
@@ -391,7 +391,7 @@ def calc_predictors(fn, cfg):
                     season=cfg.predictor_seasons[idx],
                     time_aggregation=cfg.predictor_aggs[idx],
                     mask_ocean=cfg.predictor_masko[idx],
-                    region=cfg.region,
+                    region=cfg.predictor_region[idx],
                     overwrite=cfg.overwrite,
                 )
 
@@ -448,14 +448,16 @@ def calc_predictors(fn, cfg):
                         season=cfg.predictor_seasons[idx],
                         time_aggregation=cfg.predictor_aggs[idx],
                         mask_ocean=cfg.predictor_masko[idx],
-                        region=cfg.region,
+                        region=cfg.predictor_region[idx],
                         overwrite=cfg.overwrite,
                         regrid=obsdata in REGRID_OBS,
                     )
                     obs_list.append(obs)
             obs = xr.concat(obs_list, dim='dataset_dim')
-            obs_min = obs.min('dataset_dim', skipna=False)
-            obs_max = obs.max('dataset_dim', skipna=False)
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore')
+                obs_min = obs.min('dataset_dim', skipna=False)
+                obs_max = obs.max('dataset_dim', skipna=False)
 
             @vectorize('(n,m),(n,m),(n,m)->(n,m)')
             def distance_uncertainty(var, obs_min, obs_max):
