@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-10-29 15:11:33 lukas>
+Time-stamp: <2019-02-21 17:02:01 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -34,8 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 def plot_rmse(da, idx, cfg, da2=None):
-    """
-    Matrix plot of RMSEs for a given diagnostic.
+    """Matrix plot of RMSEs for a given diagnostic.
 
     Parameters
     ----------
@@ -88,8 +87,7 @@ def plot_rmse(da, idx, cfg, da2=None):
 
 
 def plot_fraction_matrix(xx, yy, data, cfg, idx=None, title=''):
-    """
-    Matrix plot of the perfect model test result.
+    """Matrix plot of the perfect model test result.
 
     Parameters
     ----------
@@ -140,21 +138,19 @@ def plot_fraction_matrix(xx, yy, data, cfg, idx=None, title=''):
     return filename
 
 
-def plot_maps(ds, idx, cfg, obs=None):
-    """
-    Mapplot of a given diagnostic and each model.
+def plot_maps(ds, idx, cfg):
+    """Mapplot of a given diagnostic and each model.
 
     Parameters
     ----------
-    ds : xarray.Dataset
+    ds : xarray.Array
         Has to contain the varn and the dimensions 'lat', 'lon', and
         'model_ensemble'
-    varn : string
-        A string for naming the plot (normally the name of the diagnostic)
+    idx : int
+        Index of the predictor
     cfg : object
         Config object
     """
-    diagn = cfg.predictor_diagnostics[idx]
     agg = cfg.predictor_aggs[idx]
     syear = cfg.predictor_startyears[idx]
     eyear = cfg.predictor_endyears[idx]
@@ -164,24 +160,14 @@ def plot_maps(ds, idx, cfg, obs=None):
 
     if 'month' in ds.dims:
         ds = ds.sum('month')
-        obs = obs.sum('month')
 
     for model_ensemble in ds['model_ensemble'].data:
         proj = ccrs.PlateCarree(central_longitude=0)
         fig, ax = plt.subplots(subplot_kw={'projection': proj})
-        if obs is None:
-            ds.sel(model_ensemble=model_ensemble)[diagn].plot.pcolormesh(
-                 ax=ax, transform=ccrs.PlateCarree(),
-                 cbar_kwargs={'orientation': 'horizontal',
-                              'label': 'tas (K)',
-                              'pad': .1})
-        else:
-            (ds.sel(model_ensemble=model_ensemble)[diagn] -
-             obs[diagn]).plot.pcolormesh(
-                 ax=ax, transform=ccrs.PlateCarree(),
-                 cbar_kwargs={'orientation': 'horizontal',
-                              'label': 'tas (K)',
-                              'pad': .1})
+        ds.sel(model_ensemble=model_ensemble).plot.pcolormesh(
+            ax=ax, transform=ccrs.PlateCarree(),
+            cbar_kwargs={'orientation': 'horizontal',
+                         'pad': .1})
         ax.coastlines()
         ax.add_feature(cartopy.feature.BORDERS)
         xx, yy = np.meshgrid(ds['lon'], ds['lat'])
@@ -199,9 +185,9 @@ def plot_maps(ds, idx, cfg, obs=None):
         ax.set_xlabel('')
         ax.set_ylabel('')
 
-        ax.set_title('{}: {} {} {}-{}'.format(model_ensemble, diagn, agg, syear, eyear))
+        ax.set_title('{}: {}{} {}-{}'.format(model_ensemble, ds.name, agg, syear, eyear))
 
-        filename = os.path.join(path, 'map_{}-{}_{}'.format(diagn, agg, model_ensemble))
+        filename = os.path.join(path, 'map_{}-{}_{}'.format(ds.name, agg, model_ensemble))
         plt.savefig(filename + '.png', dpi=300)
         plt.close()
         logger.debug('Saved plot: {}.png'.format(filename))

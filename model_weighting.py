@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-02-13 14:50:02 lukbrunn>
+Time-stamp: <2019-02-21 17:09:00 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -391,7 +391,7 @@ def calc_predictors(fn, cfg):
                     season=cfg.predictor_seasons[idx],
                     time_aggregation=cfg.predictor_aggs[idx],
                     mask_ocean=cfg.predictor_masko[idx],
-                    region=cfg.predictor_region[idx],
+                    region=cfg.predictor_regions[idx],
                     overwrite=cfg.overwrite,
                 )
 
@@ -448,11 +448,12 @@ def calc_predictors(fn, cfg):
                         season=cfg.predictor_seasons[idx],
                         time_aggregation=cfg.predictor_aggs[idx],
                         mask_ocean=cfg.predictor_masko[idx],
-                        region=cfg.predictor_region[idx],
+                        region=cfg.predictor_regions[idx],
                         overwrite=cfg.overwrite,
                         regrid=obsdata in REGRID_OBS,
                     )
                     obs_list.append(obs)
+
             obs = xr.concat(obs_list, dim='dataset_dim')
             with warnings.catch_warnings():
                 warnings.filterwarnings('ignore')
@@ -480,6 +481,12 @@ def calc_predictors(fn, cfg):
                     obs_min[diagn_key], obs_max[diagn_key],
                     input_core_dims=[['lat', 'lon'], ['lat', 'lon'], ['lat', 'lon']],
                     output_core_dims=[['lat', 'lon']])
+
+            # --- optional: mapplot of differences ---
+            if cfg.plot:
+                with utils.LogTime('Plotting maps', level='info'):
+                    plot_maps(diff, idx, cfg)
+            # ---------------------------------------
 
             diff = area_weighted_mean(diff**2)
             if cfg.predictor_aggs[idx] == 'CYC':
@@ -519,20 +526,14 @@ def calc_predictors(fn, cfg):
         logger.debug('Normalize data... DONE')
         diagnostics_all.append(diagnostics)
         logger.info(f'Calculate diagnostic {diagn_key}{cfg.predictor_aggs[idx]}... DONE')
-        # --- optional plot output for consistency checks ---
+        # --- optional: RMSE matrix plot ---
         if cfg.plot:
-            with utils.LogTime('Plotting', level='info'):
-                plotn = plot_rmse(diagnostics['rmse_models'], idx, cfg,
-                                  diagnostics['rmse_obs'] if cfg.obsdata is not None else None)
-                if cfg.obsdata is not None and len(cfg.obsdata) == 1:
-                    plot_maps(diagnostics, idx, cfg, obs=obs.isel(dataset_dim=0))
-                else:
-                    plot_maps(diagnostics, idx, cfg)
-
-                add_hist(diagnostics)
-                diagnostics.to_netcdf(plotn + '.nc')  # also save the data
-                logger.debug('Saved plot data: {}.nc'.format(plotn))
-        # ---------------------------------------------------
+            plotn = plot_rmse(diagnostics['rmse_models'], idx, cfg,
+                              diagnostics['rmse_obs'] if cfg.obsdata is not None else None)
+            add_hist(diagnostics)
+            diagnostics.to_netcdf(plotn + '.nc')  # also save the data
+            logger.debug('Saved plot data: {}.nc'.format(plotn))
+        # ----------------------------------
 
     # take the mean over all diagnostics and write them into a now Dataset
     # TODO: somehow xr.concat(diganostics_all) does not work -> fix it?
@@ -555,15 +556,14 @@ def calc_predictors(fn, cfg):
             'model_ensemble': diagnostics['model_ensemble'].data},
         data_vars={'delta_i': (('perfect_model_ensemble', 'model_ensemble'), delta_i)})
 
-    # --- optional plot output for consistency checks ---
+    # --- optional: mean RMSE matrix plot ---
     if cfg.plot:
         plotn = plot_rmse(delta_i['delta_i'], 'mean', cfg,
                           delta_q['delta_q'] if cfg.obsdata else None)
-
         add_hist(diagnostics)
         diagnostics.to_netcdf(plotn + '.nc')  # also save the data
         logger.debug('Saved plot data: {}.nc'.format(plotn))
-    # ---------------------------------------------------
+    # ---------------------------------------
 
     return delta_q['delta_q'], delta_i['delta_i']
 

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-01-28 09:48:56 lukbrunn>
+Time-stamp: <2019-02-21 16:47:51 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -214,6 +214,7 @@ def calculate_basic_diagnostic(infile, varn,
             if lonmax > 180 or lonmin < -180 or latmax > 90 or latmin < -90:
                 raise ValueError(f'Wrong lat/lon value in {regionfile}')
             da = da.salem.roi(corners=((lonmin, latmin), (lonmax, latmax)))
+            da = da.salem.subset(corners=((lonmin, latmin), (lonmax, latmax)), margin=1)
         else:
             if isinstance(region, str):
                 region = [region]
@@ -224,14 +225,12 @@ def calculate_basic_diagnostic(infile, varn,
                     regionmask.defined_regions.srex.mask(da) == key)
             mask = sum(masks) == 1
             da = da.where(mask)
+            da = da.salem.subset(roi=mask, margin=1)
 
         if np.all(np.isnan(da.isel(time=0))):
             errmsg = 'All grid points masked! Wrong masking settings?'
             logger.error(errmsg)
             raise ValueError(errmsg)
-
-        # drop lats/lons with only nan (=region of interest (ROI))
-        da = da.salem.subset(roi=~np.isnan(da.isel(time=0)), margin=1)
 
     if mask_ocean:
         sea_mask = regionmask.defined_regions.natural_earth.land_110.mask(da) == 0
