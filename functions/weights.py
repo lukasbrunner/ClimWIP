@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2018-12-08 17:14:08 lukas>
+Time-stamp: <2019-02-21 18:31:18 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -50,6 +50,12 @@ def calculate_weights(quality, independence, sigma_q, sigma_i):
     exp = np.exp(-((independence/sigma_i)**2))
     sum_exp = [np.sum(np.delete(ee, ii)) for ii, ee in enumerate(exp)]  # sum i!=j
     denominator = 1 + np.array(sum_exp)
+
+    if sigma_i == -99.:
+        denominator = (denominator * 0) + 1  # set to 1 (except NaN)
+    if sigma_q == -99.:
+        numerator = (numerator * 0) + 1  # set to 1 (except NaN)
+
     return numerator, denominator
 
 

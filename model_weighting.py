@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-02-21 17:09:00 lukbrunn>
+Time-stamp: <2019-02-22 08:18:22 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -108,6 +108,10 @@ def test_config(cfg):
         raise ValueError('Typo in overwrite, debug, plot?')
     if cfg.ensemble_independence and not cfg.ensembles:
         raise ValueError('Can not use ensemble_independence without ensembles')
+    if cfg.sigma_i is not None:
+        cfg.sigma_i = float(cfg.sigma_i)
+    if cfg.sigma_q is not None:
+        cfg.sigma_q = float(cfg.sigma_q)
     return None
 
 
@@ -595,7 +599,7 @@ def calc_sigmas(targets, delta_i, cfg, debug=False):
     sigma_i : float
         Optimal shape parameter for independence weighting
     """
-    if cfg.sigma_i is not None or cfg.sigma_q is not None:
+    if cfg.sigma_i is not None and cfg.sigma_q is not None:
         logger.info('Using user sigmas: q={}, i={}'.format(cfg.sigma_q, cfg.sigma_i))
         return cfg.sigma_q, cfg.sigma_i
 
@@ -603,10 +607,16 @@ def calc_sigmas(targets, delta_i, cfg, debug=False):
     tmp = np.nanmean(delta_i)
 
     # a large value means all models have equal quality -> we want this as small as possible
-    sigmas_q = np.linspace(.1*tmp, 1.9*tmp, SIGMA_SIZE)
+    if cfg.sigma_q == -99.:  # convention: equal weighting
+        sigmas_q = np.array([-99.])
+    else:
+        sigmas_q = np.linspace(.1*tmp, 1.9*tmp, SIGMA_SIZE)
     # a large value means all models depend on each other, a small value means all models
     # are independent -> we want this ~delta_i
-    sigmas_i = np.linspace(.1*tmp, 1.9*tmp, SIGMA_SIZE)
+    if cfg.sigma_i == -99.:  # convention: equal weighting
+        sigmas_i = np.array([-99.])
+    else:
+        sigmas_i = np.linspace(.1*tmp, 1.9*tmp, SIGMA_SIZE)
 
     model_ensemble = targets['model_ensemble'].data
     models = [*map(lambda x: x.split('_')[0], model_ensemble)]
