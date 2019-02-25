@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-02-21 16:47:51 lukbrunn>
+Time-stamp: <2019-02-25 11:45:15 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -118,6 +118,21 @@ def standardize_units(da, varn):
         newunit = 'pa'
         if unit.lower() == newunit:
             pass
+        elif unit.lower() == 'hPa':
+            da.data *= 100.
+            da.attrs = attrs
+            da.attrs['units'] = newunit
+        else:
+            logmsg = 'Unit {} not covered for {}'.format(unit, varn)
+            raise ValueError(logmsg)
+
+    # --- radiation ---
+    elif varn in ['rsds', 'rsus', 'rlds', 'rlus', 'rnet']:
+        newunit = 'W m**-2'
+        if unit == newunit:
+            pass
+        elif unit == 'W m-2':
+            da.attrs['units'] = newunit
         else:
             logmsg = 'Unit {} not covered for {}'.format(unit, varn)
             raise ValueError(logmsg)
