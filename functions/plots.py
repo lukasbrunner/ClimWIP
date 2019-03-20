@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-02-21 17:02:01 lukbrunn>
+Time-stamp: <2019-03-11 14:15:00 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -143,7 +143,7 @@ def plot_maps(ds, idx, cfg):
 
     Parameters
     ----------
-    ds : xarray.Array
+    ds : xarray.DataArray
         Has to contain the varn and the dimensions 'lat', 'lon', and
         'model_ensemble'
     idx : int
@@ -164,13 +164,28 @@ def plot_maps(ds, idx, cfg):
     for model_ensemble in ds['model_ensemble'].data:
         proj = ccrs.PlateCarree(central_longitude=0)
         fig, ax = plt.subplots(subplot_kw={'projection': proj})
-        ds.sel(model_ensemble=model_ensemble).plot.pcolormesh(
+        ds_sel = ds.sel(model_ensemble=model_ensemble).copy(deep=True)
+
+        # if ds.name == 'tas':
+        #     vmax = np.max(np.abs(ds_sel.quantile((0.05, .95)))).data
+        #     boundaries = np.linspace(-vmax, vmax, 9)
+        #     # boundaries = np.linspace(-4, 4, 9)
+        #     boundaries = np.concatenate([boundaries[:4], [0], boundaries[4:]])
+        #     cmap = plt.cm.get_cmap('RdBu_r',len(boundaries))
+        #     colors = list(cmap_reds(np.arange(len(boundaries))))
+        #     colors[4] = 'gray'
+        #     cmap = mpl.colors.ListedColormap(colors, "")
+
+        ds_sel.data[ds_sel.data == 0] = np.nan  # hack to set 0 distance to white
+        cbar = ds_sel.plot.pcolormesh(
             ax=ax, transform=ccrs.PlateCarree(),
+            center=0, levels=9, robust=True, extend='both',
             cbar_kwargs={'orientation': 'horizontal',
                          'pad': .1})
+        cbar.cmap.set_bad('white')  # set 0 distance to white
         ax.coastlines()
         ax.add_feature(cartopy.feature.BORDERS)
-        xx, yy = np.meshgrid(ds['lon'], ds['lat'])
+        xx, yy = np.meshgrid(ds['lon'].data[1:-1], ds['lat'].data[1:-1])
         ax.scatter(xx, yy, s=1, color='k')
 
         longitude_formatter = LongitudeFormatter()
