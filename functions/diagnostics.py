@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-02-25 11:45:15 lukbrunn>
+Time-stamp: <2019-03-05 16:58:36 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -181,7 +181,7 @@ def calculate_basic_diagnostic(infile, varn,
     overwrite : bool, optional
         If True overwrite existing outfiles otherwise read and return them.
     regrid : bool, optional
-        If True the file will be regridded by cdo.remapbic before opening.
+        If True the file will be regridded by cdo.remapbil before opening.
 
     Returns
     -------
@@ -192,7 +192,7 @@ def calculate_basic_diagnostic(infile, varn,
         return xr.open_dataset(outfile)
 
     if regrid:
-        infile = cdo.remapbic(os.path.join(REGION_DIR, MASK),
+        infile = cdo.remapbil(os.path.join(REGION_DIR, MASK),
                               options='-b F64', input=infile)
 
     da = xr.open_dataset(infile)[varn]
@@ -261,14 +261,14 @@ def calculate_basic_diagnostic(infile, varn,
         warnings.filterwarnings('ignore', message='Degrees of freedom <= 0 for slice')
 
         if time_aggregation == 'CLIM':
-            da = da.groupby('time.year').mean('time')
-            da = da.mean('year')
+            da = da.groupby('time.year').mean('time', skipna=False)
+            da = da.mean('year', skipna=False)
         elif time_aggregation == 'STD':
             da = xr.apply_ufunc(detrend, da,
                                 input_core_dims=[['time']],
                                 output_core_dims=[['time']],
                                 keep_attrs=True)
-            da = da.std('time')
+            da = da.std('time', skipna=False)
         elif time_aggregation == 'TREND':
             da = xr.apply_ufunc(trend, da,
                                 input_core_dims=[['time']],
