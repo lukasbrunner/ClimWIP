@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-02-13 12:11:37 lukbrunn>
+Time-stamp: <2019-03-15 10:55:59 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -24,17 +24,18 @@ from cdo import Cdo
 cdo = Cdo()
 
 from utils_python import utils
+from utils_python.decorators import vectorize
 from utils_python.xarray import area_weighted_mean
-from utils_python.math import variance, quantile2
+from utils_python.math import variance, quantile2, std
 
 from model_weighting.model_weighting import set_up_filenames, get_filenames
 from model_weighting.functions.diagnostics import calculate_basic_diagnostic
 
 REGION_DIR = '{}/../cdo_data/'.format(os.path.dirname(__file__))
-MASK = 'land_sea_mask_regionsmask.nc'  # 'seamask_g025.nc'
+MASK = 'land_sea_mask_regionsmask.nc'
 
 variance = np.vectorize(variance, signature='(n)->()', excluded=['weights', 'biased'])
-period_ref = slice('1976', '2005')
+period_ref = slice('1995', '2014')
 perfect_model_ensemble = 'MIROC5_r1i1p1'
 REGRID_OBS = [
     'ERA-Interim',
@@ -61,7 +62,7 @@ def read_config():
     return cfg, args
 
 
-def read_data(cfg, change):
+def read_data(cfg, mask, change):
     varn = cfg.target_diagnostic
     fn = set_up_filenames(cfg)
     ds_list = []
@@ -76,7 +77,12 @@ def read_data(cfg, change):
             season=cfg.target_season,
             time_aggregation=None,
             mask_ocean=cfg.target_masko,
-            region=cfg.region)
+            region=cfg.target_region)
+
+        ds[cfg.target_diagnostic] = xr.apply_ufunc(
+            apply_obs_mask, ds[cfg.target_diagnostic], mask,
+            input_core_dims=[['lat', 'lon'], ['lat', 'lon']],
+            output_core_dims=[['lat', 'lon']])
 
         # xarray spams warnings about the masked vales
         with warnings.catch_warnings():
@@ -95,6 +101,13 @@ def read_data(cfg, change):
     return xr.concat(ds_list, dim='model_ensemble')
 
 
+@vectorize('(n,m),(n,m)->(n,m)')
+def apply_obs_mask(data, mask):
+    data = np.ma.masked_array(data, mask)  # mask data
+    data = np.ma.filled(data, fill_value=np.nan)  # set masked to NaN
+    return data
+
+
 def read_obs(cfg, change):
 
     if cfg.obsdata is None:
@@ -106,6 +119,7 @@ def read_obs(cfg, change):
 
     varn = cfg.target_diagnostic
     ds_list = []
+    mask = False
     for obs_path, obsdata in zip(cfg.obs_path, cfg.obsdata):
         filename = os.path.join(obs_path, '{}_mon_{}_g025.nc'.format(varn, obsdata))
 
@@ -116,14 +130,16 @@ def read_obs(cfg, change):
             season=cfg.target_season,
             time_aggregation=None,
             mask_ocean=cfg.target_masko,
-            region=cfg.region,
+            region=cfg.target_region,
             regrid=cfg.target_diagnostic in REGRID_OBS)
 
         with warnings.catch_warnings():
             warnings.filterwarnings('ignore', message='Mean of empty slice')
             ds = ds.resample(time='1a').mean()
-        ds = area_weighted_mean(ds)
-        ds = ds.sel(time=slice('1950', None))
+
+        mask = np.ma.mask_or(mask, np.isnan(ds.mean('time', skipna=False)[cfg.target_diagnostic]))
+
+        ds = ds.sel(time=slice('1995', '2014'))
         if change:
             ds[varn] -= ds[varn].sel(time=slice(
                 str(cfg.target_startyear_ref),
@@ -131,7 +147,14 @@ def read_obs(cfg, change):
         ds['time'].data = ds['time'].dt.year.data
         ds_list.append(ds)
     ds = xr.concat(ds_list, dim='dataset')
-    return ds
+
+    # before taking the area mean set all grid points to NaN which are NaN in
+    # ANY of the observational datasets
+    ds[cfg.target_diagnostic] = xr.apply_ufunc(
+        apply_obs_mask, ds[cfg.target_diagnostic], mask,
+        input_core_dims=[['lat', 'lon'], ['lat', 'lon']],
+        output_core_dims=[['lat', 'lon']])
+    return area_weighted_mean(ds), mask
 
 
 def read_weights(model_ensemble, cfg):
@@ -145,10 +168,12 @@ def plot(cfg, args):
     varn = cfg.target_diagnostic
     fig, ax = plt.subplots()  # figsize=(15, 5))
 
-    ds = read_data(cfg, change=args.change)
+    obs, mask = read_obs(cfg, change=args.change)
+    ds = read_data(cfg, mask, change=args.change)
     data, xx = ds[varn].data, ds['time'].data
 
-    l2 = None
+    handles = []
+    labels = []
 
     # --- unweighted baseline ---
     # for dd in data:
@@ -157,12 +182,19 @@ def plot(cfg, args):
         xx,
         quantile2(data, .05),
         quantile2(data, .95),
-        # data.mean(axis=0) - data.std(axis=0),  # StdDev shading
-        # data.mean(axis=0) + data.std(axis=0),
         color='gray',
         alpha=.2,
         zorder=100,
     )
+
+    # l1a = ax.fill_between(
+    #     xx,
+    #     data.mean(axis=0) - .5*data.std(axis=0),  # StdDev shading
+    #     data.mean(axis=0) + .5*data.std(axis=0),
+    #     color='gray',
+    #     alpha=.2,
+    #     zorder=100,
+    # )
 
     # plot mean
     [l1b] = ax.plot(
@@ -171,6 +203,9 @@ def plot(cfg, args):
         lw=2,
         zorder=1000,
     )
+
+    handles.append((l1a, l1b))
+    labels.append('Mean & 90% spread')
 
     # --- weighted ----
     weights = read_weights(ds['model_ensemble'].data, cfg)
@@ -186,26 +221,10 @@ def plot(cfg, args):
         [l2] = ax.plot(xx, ds.sel(model_ensemble=perfect_model_ensemble)[varn].data,
                        color='k', lw=2)
 
+        handles.append(l2)
+        labels.append('Perfect model')
+
     weights = weights.data
-    # def color(ww):
-    #     """Different colors due to weights"""
-    #     if ww > .05:
-    #         return 'red'
-    #     elif ww > .01:
-    #         return 'orange'
-    #     elif ww > .005:
-    #         return 'yellow'
-    #     return 'gray'
-    for dd, ww in zip(data, weights):
-        ww /= weights.max()
-        ax.plot(
-            xx, dd,
-            color='darkred',  # color(ww),
-            alpha=ww,
-            lw=.3,
-            zorder=10,
-        )  # all lines
-    [l3c] = ax.plot([], [], color='darkred', lw=.5)
 
     l3a = ax.fill_between(
         xx,
@@ -215,6 +234,16 @@ def plot(cfg, args):
         alpha=.2,
         zorder=200,
     )
+
+    # l3a = ax.fill_between(
+    #     xx,
+    #     np.average(data, weights=weights, axis=0) - .5*std(data, weights),
+    #     np.average(data, weights=weights, axis=0) + .5*std(data, weights),
+    #     color='darkred',
+    #     alpha=.2,
+    #     zorder=200,
+    # )
+
     [l3b] = ax.plot(
         xx, np.average(data, weights=weights, axis=0),
         color='darkred',
@@ -222,16 +251,72 @@ def plot(cfg, args):
         zorder=2000,
     )
 
+    handles.append((l3a, l3b))
+    labels.append('Weighted mean & 90% spread')
+
+    # def color(ww):
+    #     """Different colors due to weights"""
+    #     if ww > 1.5:
+    #         return 'darkred'
+    #     elif ww > 1.:
+    #         return 'darkorange'
+    #     elif ww > .5:
+    #         return 'none'
+    #     return 'none'
+
+    def color(ww, ww_all):
+        """Different colors due to weights"""
+
+        if ww > np.percentile(ww_all, 90):
+            return 'darkred'
+        # elif ww > np.percentile(ww_all, 75):
+        #     return 'darkorange'
+        elif ww < np.percentile(ww_all, 10):
+            return 'darkviolet'
+        return 'none'
+
+    for dd, ww in zip(data, weights):
+        # ww /= weights.max()
+        ax.plot(
+            xx, dd,
+            color=color(ww, weights),
+            # color='darkred',  # color(ww),
+            # alpha=ww,
+            lw=.2,
+            zorder=10,
+        )  # all lines
+
+    [ll] = ax.plot([], [], color='darkred', lw=1)
+    handles.append(ll)
+    labels.append('Best 10% of models')
+
+    # [ll] = ax.plot([], [], color='darkorange', lw=1)
+    # handles.append(ll)
+    # labels.append('Best 25% of models')
+
+    [ll] = ax.plot([], [], color='darkviolet', lw=1)
+    handles.append(ll)
+    labels.append('Worst 10% of models')
+
     # --- observations ---
-    obs = read_obs(cfg, change=args.change)
     if obs is not None and len(obs['dataset']) == 1:
-        [l2] = ax.plot(
-            obs['time'].data,
-            obs.isel(dataset_dim=0)[varn].data,
-            color='k',
-            lw=2,
-            zorder=3000,
+        if 'dataset_dim' in obs.dims:
+            oo = obs.isel(dataset_dim=0)
+        elif 'dataset' in obs.dims:
+            oo = obs.isel(dataset=0)
+        else:
+            oo = obs
+
+        try:
+            [l2] = ax.plot(
+                obs['time'].data,
+                oo[varn].data,
+                color='k',
+                lw=2,
+                zorder=3000,
         )
+        except Exception:
+            import ipdb; ipdb.set_trace()
     elif obs is not None:
         min_ = obs.min('dataset', skipna=False)
         max_ = obs.max('dataset', skipna=False)
@@ -242,14 +327,18 @@ def plot(cfg, args):
             color='k',
             zorder=3000,
         )
+        [l2] = ax.plot([], [], color='k', lw=2)  # use line for legend
+
+    handles.append(l2)
+    labels.append('Observations full range')
 
     ax.set_xlabel('Year')
-    ax.set_xlim(1950, 2060)
+    ax.set_xlim(1950, 2100)
 
-    if args.change:
-        ax.set_ylim(-4, 8)
-    else:
-        ax.set_ylim(10, 30)
+    # if args.change and cfg.target_diagnostic == 'tas':
+    #     ax.set_ylim(-4, 8)
+    # elif not args.change and cfg.target_diagnostic == 'tas':
+    #     ax.set_ylim(10, 30)
 
     ax.grid(zorder=0)
     if cfg.target_diagnostic == 'tas':
@@ -259,35 +348,12 @@ def plot(cfg, args):
     else:
         varn = cfg.target_diagnostic
 
-    region = np.atleast_1d(cfg.region)
-    if 'NEU' in region and 'CEU' in region and 'MED' in region and len(region) == 3:
-        region = 'EU'
-    else:
-        region = ', '.join(region)
-    title = f'{region} {cfg.target_season} {varn}'
+    title = f'{cfg.target_region} {cfg.target_season} {varn}'
     if args.change:
         title += f' change ({cfg.target_startyear_ref}-{cfg.target_endyear_ref})'
     ax.set_title(title)
 
-    if l2 is None:
-        plt.legend([(l1a, l1b), (l3a, l3b)],
-                   ['Unweighted mean & 90%', 'Weighted mean & 90%'],
-                   loc='upper left')
-
-    else:
-        plt.legend(
-            [(l1a, l1b),
-             (l3a, l3b),
-             l2,
-             # l3c
-            ],
-            ['Unweighted mean & 90%',
-             'Weighted mean & 90%',
-             'Observations',
-             # 'Models by weight'
-            ],
-            loc='upper left'
-        )
+    plt.legend(handles, labels, loc='upper left')
 
     save_path = cfg.plot_path.replace('process_plots', 'timeseries')
     filename = os.path.join(save_path, 'lines_{}'.format(cfg.config))
