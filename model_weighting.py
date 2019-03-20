@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-02-22 08:18:22 lukbrunn>
+Time-stamp: <2019-03-14 08:56:54 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -326,6 +326,10 @@ def calc_target(fn, cfg):
                 target[cfg.target_diagnostic] -= target_hist[cfg.target_diagnostic]
 
         target['model_ensemble'] = xr.DataArray([model_ensemble], dims='model_ensemble')
+
+        if 'height' in target:  # NOTE: CMIP6 fix
+            del target['height']
+
         targets.append(target)
         logger.debug('Calculate diagnostics for file {}... DONE'.format(filename))
     return xr.concat(targets, dim='model_ensemble')[cfg.target_diagnostic]
@@ -401,6 +405,10 @@ def calc_predictors(fn, cfg):
 
             diagnostic['model_ensemble'] = xr.DataArray(
                 [model_ensemble], dims='model_ensemble')
+
+            if 'height' in diagnostic:  # NOTE: CMIP6 fix
+                del diagnostic['height']
+
             diagnostics.append(diagnostic)
             logger.debug('Calculate diagnostics for file {}... DONE'.format(filename))
         diagnostics = xr.concat(diagnostics, dim='model_ensemble')  # merge to one Dataset
@@ -717,16 +725,20 @@ def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg):
         numerator, denominator = calculate_weights(delta_q, delta_i, sigma_q, sigma_i)
         weights = numerator/denominator
         weights /= weights.sum()
+        dims = 'model_ensemble'
     else:  # in this case delta_q is a matrix for each model as truth once
         calculate_weights_matrix = np.vectorize(
             calculate_weights, signature='(n)->(n),(n)', excluded=[1, 2, 3])
         numerator, denominator = calculate_weights_matrix(delta_q, delta_i, sigma_q, sigma_i)
         weights = numerator/denominator
         weights /= np.nansum(weights, axis=-1)
+        dims = ('perfect_model_ensemble', 'model_ensemble')
 
     ds = delta_q.to_dataset().copy()
     ds = ds.rename({'delta_q': 'weights'})
     ds['weights'].data = weights
+    ds['weights_q'] = xr.DataArray(numerator, dims=dims)
+    ds['weights_i'] = xr.DataArray(denominator, dims=dims)
     ds['delta_q'] = delta_q
     ds['delta_i'] = delta_i
     ds['sigma_q'] = xr.DataArray([sigma_q])
