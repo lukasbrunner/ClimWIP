@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-03-05 16:58:36 lukbrunn>
+Time-stamp: <2019-05-08 13:44:41 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -137,6 +137,18 @@ def standardize_units(da, varn):
             logmsg = 'Unit {} not covered for {}'.format(unit, varn)
             raise ValueError(logmsg)
 
+    # --- snow depth ---
+    # elif varn in ['snd']:
+    #     newunit = 'm'
+    #     if unit == newunit:
+    #         pass
+    #     elif unit == 'm of water equivalent':
+    #         da.data *= 1.09  # TODO: Is this correct??
+    #         da.attrs['units'] = newunit
+    #     else:
+    #         logmsg = 'Unit {} not covered for {}'.format(unit, varn)
+    #         raise ValueError(logmsg)
+
     # --- not covered ---
     else:
         logmsg = 'Variable {} not covered in standardize_units'.format(varn)
@@ -264,14 +276,16 @@ def calculate_basic_diagnostic(infile, varn,
             da = da.groupby('time.year').mean('time', skipna=False)
             da = da.mean('year', skipna=False)
         elif time_aggregation == 'STD':
+            da = da.groupby('time.year').mean('time', skipna=False)
             da = xr.apply_ufunc(detrend, da,
-                                input_core_dims=[['time']],
-                                output_core_dims=[['time']],
+                                input_core_dims=[['year']],
+                                output_core_dims=[['year']],
                                 keep_attrs=True)
-            da = da.std('time', skipna=False)
+            da = da.std('year', skipna=False)
         elif time_aggregation == 'TREND':
+            da = da.groupby('time.year').mean('time', skipna=False)
             da = xr.apply_ufunc(trend, da,
-                                input_core_dims=[['time']],
+                                input_core_dims=[['year']],
                                 output_core_dims=[[]],
                                 keep_attrs=True)
             attrs['units'] = '{} year**-1'.format(attrs['units'])
