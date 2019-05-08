@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-03-14 08:56:54 lukbrunn>
+Time-stamp: <2019-05-08 13:54:28 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -639,7 +639,7 @@ def calc_sigmas(targets, delta_i, cfg, debug=False):
     idx_i_min = None
     if cfg.ensemble_independence:
         weighting_ratio = independence_sigma(delta_i, sigmas_i, idx, counts)
-        idx_i_min = np.argmin(np.abs(weighting_ratio - 1))
+        idx_i_min = np.argmin(weighting_ratio)
 
     weights_sigmas = calculate_weights_sigmas(delta_i_1ens, sigmas_q, sigmas_i)
 
@@ -744,7 +744,7 @@ def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg):
     ds['sigma_q'] = xr.DataArray([sigma_q])
     ds['sigma_i'] = xr.DataArray([sigma_i])
 
-    if cfg.plot:
+    if cfg.plot and cfg.obsdata:
         plot_weights(ds, cfg, numerator, denominator)
         plot_weights(ds, cfg, numerator, denominator, sort=True)
 
