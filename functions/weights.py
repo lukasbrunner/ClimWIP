@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-02-21 18:31:18 lukbrunn>
+Time-stamp: <2019-05-08 13:54:17 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -161,16 +161,16 @@ def independence_sigma(delta_i, sigmas_i, idx, counts):
         indep_1mod = calculate_independence_ensembles(delta_i_1mod, sigmas_i)
         # calculate the mean weighting of all ensemble members
         temp = np.mean(indep_1mod[:, np.arange(jj, jj+cc)], axis=1)
-        # remove 1 for each additional member and divide be the original weighting
-        # -> in the ideal case this should be 1!
-        temp = (temp - (cc - 1)) / indep_1ens[:, jj]
+        # remove 1 for each additional member and subtract the original weighting
+        # -> in the ideal case this should be 0!
+        temp = ((temp - (cc - 1)) - indep_1ens[:, jj])**2
         indep_ratio.append(temp)
 
         # calculate the mean weighting for all other models
-        # -> should also be 1 in the ideal case (other models are not
+        # -> should also be 0 in the ideal case (other models are not
         # influenced by adding ensemble members to one model).
         temp = np.delete(indep_1mod, np.arange(jj, jj+cc), axis=1)
-        temp = np.mean(temp / np.delete(indep_1ens, jj, axis=1), axis=1)
+        temp = np.mean((temp - np.delete(indep_1ens, jj, axis=1))**2, axis=1)
         indep_ratio_others.append(temp)
 
     indep_ratio_mean = np.mean(indep_ratio, axis=0)
@@ -180,7 +180,7 @@ def independence_sigma(delta_i, sigmas_i, idx, counts):
     # The idea with this is that we don't want the weighting of all the
     # other models being influenced too much by the fact that we are adding
     # ensemble members to one model.
-    return np.mean([indep_ratio_mean, indep_ratio_others_mean], axis=0)
+    return np.sum([indep_ratio_mean, indep_ratio_others_mean], axis=0)
 
 
 # This does all model with more than one member at once (unfinished)
