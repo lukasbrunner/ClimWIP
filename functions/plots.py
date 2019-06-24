@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-03-11 14:15:00 lukbrunn>
+Time-stamp: <2019-05-10 09:50:51 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -99,7 +99,7 @@ def plot_fraction_matrix(xx, yy, data, cfg, idx=None, title=''):
         idx gives the position of the selected sigma values as dot
     title : string, optional
     """
-    boundaries = np.arange(.2, 1., .1)
+    boundaries = np.arange(.7, 1.01, .02)
     cmap = plt.cm.get_cmap('viridis', len(boundaries))
     colors = list(cmap(np.arange(len(boundaries))))
     cmap = mpl.colors.ListedColormap(colors, "")
