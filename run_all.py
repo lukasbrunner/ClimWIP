@@ -50,4 +50,4 @@ for section in config.sections():
         logfile.write('-' * 79)
         logfile.write('\n')
     os.system(f'python model_weighting.py {section} -f {args.filename} -log-file logfiles/{logname}')
-    os.system(f'python post_processing/lineplot_timeseries.py {section} -f ../{args.filename}')
+    # os.system(f'python post_processing/lineplot_timeseries.py {section} -f ../{args.filename}')
