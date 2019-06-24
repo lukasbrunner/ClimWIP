@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-05-08 13:54:28 lukbrunn>
+Time-stamp: <2019-06-24 11:10:32 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -112,6 +112,10 @@ def test_config(cfg):
         cfg.sigma_i = float(cfg.sigma_i)
     if cfg.sigma_q is not None:
         cfg.sigma_q = float(cfg.sigma_q)
+    try:
+        cfg.obs_uncertainty
+    except AttributeError:
+        cfg.obs_uncertainty = 'center'
     return None
 
 
@@ -244,10 +248,19 @@ def set_up_filenames(cfg):
     logger.info('Variables in analysis: {}'.format(', '.join(varns)))
 
     # set up filenames class
+    if 'cmip6' in cfg.data_path:
+        file_pattern = '{varn}/{freq}/g025/{varn}_{freq}_{model}_{scenario}_{ensemble}_g025.nc'
+    # elif 'cmip3' in cfg.data_path:
+    #     file_pattern = '{varn}/{varn}_{freq}_{model}_{scenario}_{ensemble}_g025.nc'
+    else:
+        file_pattern = '{varn}/{varn}_{freq}_{model}_{scenario}_{ensemble}_g025.nc'
+
     fn = Filenames(
-        file_pattern='{varn}/{varn}_{freq}_{model}_{scenario}_{ensemble}_g025.nc',
+        file_pattern=file_pattern,
         base_path=cfg.data_path)
+
     fn.apply_filter(varn=varns, freq=cfg.freq, scenario=cfg.scenario)
+    assert len(fn.get_filenames()) != 0
     assert len(fn.get_variable_values('scenario')) == 1
 
     # restrict to models which are available for all variables
@@ -293,6 +306,7 @@ def calc_target(fn, cfg):
     os.makedirs(base_path, exist_ok=True)
 
     targets = []
+    clim = []
     for filename, model_ensemble in zip(*get_filenames(
             fn, cfg.target_diagnostic, cfg.ensembles)):
 
@@ -326,13 +340,16 @@ def calc_target(fn, cfg):
                 target[cfg.target_diagnostic] -= target_hist[cfg.target_diagnostic]
 
         target['model_ensemble'] = xr.DataArray([model_ensemble], dims='model_ensemble')
+        target_hist['model_ensemble'] = xr.DataArray([model_ensemble], dims='model_ensemble')
 
         if 'height' in target:  # NOTE: CMIP6 fix
             del target['height']
 
         targets.append(target)
+        clim.append(target_hist)
         logger.debug('Calculate diagnostics for file {}... DONE'.format(filename))
-    return xr.concat(targets, dim='model_ensemble')[cfg.target_diagnostic]
+    return (xr.concat(targets, dim='model_ensemble')[cfg.target_diagnostic],
+            xr.concat(clim, dim='model_ensemble')[cfg.target_diagnostic])
 
 
 def calc_predictors(fn, cfg):
@@ -486,13 +503,25 @@ def calc_predictors(fn, cfg):
                 # NaN in either array results in NaN in diff
                 return diff
 
-            with warnings.catch_warnings():
-                warnings.filterwarnings('ignore')
-                diff = xr.apply_ufunc(
-                    distance_uncertainty, diagnostics[diagn_key],
-                    obs_min[diagn_key], obs_max[diagn_key],
-                    input_core_dims=[['lat', 'lon'], ['lat', 'lon'], ['lat', 'lon']],
-                    output_core_dims=[['lat', 'lon']])
+            if cfg.obs_uncertainty == 'range':
+                with warnings.catch_warnings():
+                    warnings.filterwarnings('ignore')
+                    diff = xr.apply_ufunc(
+                        distance_uncertainty, diagnostics[diagn_key],
+                        obs_min[diagn_key], obs_max[diagn_key],
+                        input_core_dims=[['lat', 'lon'], ['lat', 'lon'], ['lat', 'lon']],
+                        output_core_dims=[['lat', 'lon']])
+            elif cfg.obs_uncertainty == 'center':
+                diff = diagnostics[diagn_key] - .5*(obs_min[diagn_key] + obs_max[diagn_key])
+            elif cfg.obs_uncertainty == 'mean':
+                diff = diagnostics[diagn_key] - obs.mean('dataset_dim')[diagn_key]
+            elif cfg.obs_uncertainty == 'median':
+                diff = diagnostics[diagn_key] - obs.median('dataset_dim')[diagn_key]
+            elif cfg.obs_uncertainty is None:
+                # obs_min and obs_max are the same for this case
+                diff = diagnostics[diagn_key] - obs_min[diagn_key]
+            else:
+                raise ValueError
 
             # --- optional: mapplot of differences ---
             if cfg.plot:
@@ -790,7 +819,7 @@ def main(args):
     fn = set_up_filenames(cfg)
 
     log.start('main().calc_target(fn, cfg)')
-    targets = calc_target(fn, cfg)
+    targets, clim = calc_target(fn, cfg)
 
     log.start('main().calc_predictors(fn, cfg)')
     delta_q, delta_i = calc_predictors(fn, cfg)
@@ -803,6 +832,7 @@ def main(args):
     log.stop
 
     weights[cfg.target_diagnostic] = targets  # also save targets...
+    weights[f'{cfg.target_diagnostic}_clim'] = clim
     # ... and the filenames of the targets
     temp = fn.get_filenames(
         subset={'varn': cfg.target_diagnostic},
