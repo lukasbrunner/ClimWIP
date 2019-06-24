@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-05-08 13:44:41 lukbrunn>
+Time-stamp: <2019-05-24 16:59:39 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -201,13 +201,13 @@ def calculate_basic_diagnostic(infile, varn,
     """
     if not overwrite and outfile is not None and os.path.isfile(outfile):
         logger.debug('Diagnostic already exists & overwrite=False, skipping.')
-        return xr.open_dataset(outfile)
+        return xr.open_dataset(outfile, use_cftime=True)
 
     if regrid:
         infile = cdo.remapbil(os.path.join(REGION_DIR, MASK),
                               options='-b F64', input=infile)
 
-    da = xr.open_dataset(infile)[varn]
+    da = xr.open_dataset(infile, use_cftime=True)[varn]
     enc = da.encoding
     da = standardize_dimensions(da)
     assert np.all(da['lat'].data == np.arange(-88.75, 90., 2.5))
