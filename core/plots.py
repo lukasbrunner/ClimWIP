@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-05-10 09:50:51 lukbrunn>
+Time-stamp: <2019-06-27 14:34:09 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -21,8 +21,6 @@ import matplotlib.pyplot as plt
 import cartopy
 import cartopy.crs as ccrs
 from cartopy.mpl.ticker import LongitudeFormatter, LatitudeFormatter
-
-from utils_python.xarray import add_hist
 
 # matplotlib bug; issue 1120
 # https://github.com/SciTools/cartopy/issues/1120

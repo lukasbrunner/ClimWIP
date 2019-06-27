@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-05-24 16:59:39 lukbrunn>
+Time-stamp: <2019-06-27 15:10:46 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -19,35 +19,20 @@ import warnings
 import regionmask
 import numpy as np
 import xarray as xr
-from scipy import stats, signal
-import matplotlib as mpl
-mpl.use('Agg')  # need to set this here since salem imports plt
-import salem
 from cdo import Cdo
+
+from core.utils_xarray import (
+    detrend,
+    trend,
+    correlation,
+    flip_antimeridian
+)
+
 cdo = Cdo()
-
-from utils_python.decorators import vectorize
-from utils_python.xarray import standardize_dimensions
-
 logger = logging.getLogger(__name__)
+
 REGION_DIR = '{}/../cdo_data/'.format(os.path.dirname(__file__))
 MASK = 'land_sea_mask_regionsmask.nc'  # 'seamask_g025.nc'
-unit_save = None
-
-
-@vectorize('(n)->(n)')
-def detrend(data):
-    if np.any(np.isnan(data)):
-        return data * np.nan
-    return signal.detrend(data)
-
-
-@vectorize('(n)->()')
-def trend(data):
-    if np.any(np.isnan(data)):
-        return np.nan
-    xx = np.arange(len(data))
-    return stats.linregress(xx, data).slope
 
 
 def calculate_net_radiation(infile, varns, outname, diagn):
@@ -137,18 +122,6 @@ def standardize_units(da, varn):
             logmsg = 'Unit {} not covered for {}'.format(unit, varn)
             raise ValueError(logmsg)
 
-    # --- snow depth ---
-    # elif varn in ['snd']:
-    #     newunit = 'm'
-    #     if unit == newunit:
-    #         pass
-    #     elif unit == 'm of water equivalent':
-    #         da.data *= 1.09  # TODO: Is this correct??
-    #         da.attrs['units'] = newunit
-    #     else:
-    #         logmsg = 'Unit {} not covered for {}'.format(unit, varn)
-    #         raise ValueError(logmsg)
-
     # --- not covered ---
     else:
         logmsg = 'Variable {} not covered in standardize_units'.format(varn)
@@ -165,7 +138,9 @@ def calculate_basic_diagnostic(infile, varn,
                                mask_ocean=False,
                                region='GLOBAL',
                                overwrite=False,
-                               regrid=False):
+                               regrid=False,
+                               lats=None,
+                               lons=None):
     """
     Calculate a basic diagnostic from a given file.
 
@@ -194,6 +169,8 @@ def calculate_basic_diagnostic(infile, varn,
         If True overwrite existing outfiles otherwise read and return them.
     regrid : bool, optional
         If True the file will be regridded by cdo.remapbil before opening.
+    lats : list of int, optional
+    lons : list of int, optional
 
     Returns
     -------
@@ -209,7 +186,7 @@ def calculate_basic_diagnostic(infile, varn,
 
     da = xr.open_dataset(infile, use_cftime=True)[varn]
     enc = da.encoding
-    da = standardize_dimensions(da)
+    da = flip_antimeridian(da)
     assert np.all(da['lat'].data == np.arange(-88.75, 90., 2.5))
     assert np.all(da['lon'].data == np.arange(-178.75, 180., 2.5))
 
@@ -224,6 +201,8 @@ def calculate_basic_diagnostic(infile, varn,
         raise NotImplementedError('season={}'.format(season))
 
     if region != 'GLOBAL':
+        if region == 'points':
+            da.isel(lat=lats, lon=lons)
         if (isinstance(region, str) and
             region not in regionmask.defined_regions.srex.abbrevs):
             # if region is not a SREX region read coordinate file
@@ -240,8 +219,11 @@ def calculate_basic_diagnostic(infile, varn,
             lonmax, latmax = mask.max(axis=0)
             if lonmax > 180 or lonmin < -180 or latmax > 90 or latmin < -90:
                 raise ValueError(f'Wrong lat/lon value in {regionfile}')
-            da = da.salem.roi(corners=((lonmin, latmin), (lonmax, latmax)))
-            da = da.salem.subset(corners=((lonmin, latmin), (lonmax, latmax)), margin=1)
+
+            lats, lons = da['lat'].data, da['lon'].data
+            lats = lats[(lats >= latmin) & (lats <= latmax)]
+            lons = lons[(lons >= lonmin) & (lons <= lonmax)]
+            da = da.sel(lat=lats, lon=lons)
         else:
             if isinstance(region, str):
                 region = [region]
@@ -280,6 +262,7 @@ def calculate_basic_diagnostic(infile, varn,
             da = xr.apply_ufunc(detrend, da,
                                 input_core_dims=[['year']],
                                 output_core_dims=[['year']],
+                                vectorize=True,
                                 keep_attrs=True)
             da = da.std('year', skipna=False)
         elif time_aggregation == 'TREND':
@@ -287,6 +270,7 @@ def calculate_basic_diagnostic(infile, varn,
             da = xr.apply_ufunc(trend, da,
                                 input_core_dims=[['year']],
                                 output_core_dims=[[]],
+                                vectorize=True,
                                 keep_attrs=True)
             attrs['units'] = '{} year**-1'.format(attrs['units'])
         elif time_aggregation == 'CYC':
@@ -334,13 +318,16 @@ def calculate_diagnostic(infile, diagn, base_path, **kwargs):
         if isinstance(kwargs['region'], list):
             kwargs['region'] = '-'.join(kwargs['region'])
 
-        return os.path.join(base_path, '_'.join([
-            '{infile}_{time_period[0]}-{time_period[1]}_{season}',
-            '{time_aggregation}_{region}.nc']).format(**kwargs))
-
-    @vectorize('(n),(n)->()')
-    def _corr(arr1, arr2):
-        return stats.pearsonr(arr1, arr2)[0]
+        if kwargs['region'] != 'points':
+            outfile = os.path.join(base_path, '_'.join([
+                '{infile}_{time_period[0]}-{time_period[1]}_{season}',
+                '{time_aggregation}_{region}.nc']).format(**kwargs))
+        else:
+            str_ = '_'.join(['-'.join(kwargs['lats']), '-'.join(kwargs['lons'])])
+            outfile = os.path.join(base_path, '_'.join([
+                '{infile}_{time_period[0]}-{time_period[1]}_{season}',
+                '{time_aggregation}_{region}_{str_}.nc']).format(**kwargs, str_=str_))
+        return outfile
 
     if isinstance(diagn, str):  # basic diagnostic
         outfile = get_outfile(infile=infile, **kwargs)
@@ -372,8 +359,9 @@ def calculate_diagnostic(infile, diagn, base_path, **kwargs):
             infile2 = os.path.join(path, fn)
             outfile2 = get_outfile(infile=infile2, **kwargs)
             ds2 = calculate_basic_diagnostic(infile2, varns[1], outfile2, **kwargs)
-            da = xr.apply_ufunc(_corr, ds1[varns[0]], ds2[varns[1]],
-                                input_core_dims=[['time'], ['time']])
+            da = xr.apply_ufunc(correlation, ds1[varns[0]], ds2[varns[1]],
+                                input_core_dims=[['time'], ['time']],
+                                vectorize=True)
             outfile3 = outfile1.replace(f'/{varns[0]}_', f'/{diagn}_')
             ds3 = da.to_dataset(name=diagn)
             ds3[diagn].attrs = {'units': '1'}

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-05-08 13:54:17 lukbrunn>
+Time-stamp: <2019-06-27 15:36:20 lukbrunn>
 
 (c) 2018 under a MIT License (https://mit-license.org)
 
@@ -127,7 +127,7 @@ def calculate_independence_ensembles(distances, sigmas_i):
     return weights
 
 
-def independence_sigma(delta_i, sigmas_i, idx, counts):
+def independence_sigma(delta_i, sigmas_i):
     """
     Estimate the independence sigma by using ensemble members.
 
@@ -137,9 +137,8 @@ def independence_sigma(delta_i, sigmas_i, idx, counts):
         Array specifying the distances between each model.
     sigmas_i : array_like, shape (M,)
         Array of sigma values for the weighting function of the independence.
-    idx, counts : array_like, shape (L,)
-        Indices of unique models and number of members per model (output of
-        np.unique(x, return_index=True, return_counts=True).
+    unique_models : list of strings
+        A list with model identifiers to select only one member per model.
 
     Returns
     -------
@@ -147,7 +146,12 @@ def independence_sigma(delta_i, sigmas_i, idx, counts):
         Optimum is 1, i.e., models with x>1 members get correctly downweighted
         by a factor x and models with 1 member stay the same.
     """
-    delta_i_1ens = delta_i.data[idx, :][:, idx]
+    # get the number of initial-condition members per model
+    model_ensemble = delta_i['model_ensemble'].data
+    models = [*map(lambda x: x.split('_')[0], model_ensemble)]
+    _, idx, counts = np.unique(models, return_index=True, return_counts=True)
+    delta_i_1ens = delta_i.isel(model_ensemble=idx,
+                                perfect_model_ensemble=idx).data
     indep_1ens = calculate_independence_ensembles(delta_i_1ens, sigmas_i)
     indep_ratio = []
     indep_ratio_others = []
@@ -175,47 +179,7 @@ def independence_sigma(delta_i, sigmas_i, idx, counts):
 
     indep_ratio_mean = np.mean(indep_ratio, axis=0)
     indep_ratio_others_mean = np.mean(indep_ratio_others, axis=0)
+    weighting_ratio = np.sum([indep_ratio_mean, indep_ratio_others_mean], axis=0)
+    idx_i_min = np.argmin(weighting_ratio)
 
-    # TODO: that's a bit ad hoc; maybe only use indep_ratio_mean?
-    # The idea with this is that we don't want the weighting of all the
-    # other models being influenced too much by the fact that we are adding
-    # ensemble members to one model.
-    return np.sum([indep_ratio_mean, indep_ratio_others_mean], axis=0)
-
-
-# This does all model with more than one member at once (unfinished)
-# the influence on the models with only one member is therefore larger
-# def independence_sigma():
-#     # independence part of the weighting for 1 member per model...
-#     indep_1ens = calculate_independence_ensembles(delta_i_1ens, sigmas_i)
-#     # ...and all members from each model
-#     indep = calculate_independence_ensembles(delta_i, sigmas_i)
-#     # is >= 1 where larger is more similar to other models
-
-#     indep_ens = []
-#     test1 = []  # check against only the mean of the ensemble members
-#     # compared to 'indep_1ens' 'indep' has additional ensemble members for
-#     # some models. The independence weighting for these models should go
-#     # up by +1 for each additional member. Therefore the mean of the
-#     # weights of all the ensemble members minus the number of additional
-#     # members (cc - 1) should be equal to 'indep_1ens'.
-#     # NOTE: could also include models with only one member into this logic
-#     # -> 'indep' and 'indep_1ens' will not be exactly the same since some
-#     # other models have more than one member in 'indep' and therefore also
-#     # influence the independence of models with only one member.
-#     for jj, (ii, cc) in enumerate(zip(idx, counts)):
-#         # if cc == 1:  # no ensembles
-#         #     continue
-
-#         temp = np.mean(indep[:, np.arange(ii, ii+cc)], axis=1) - (cc - 1)
-#         test1.append(temp)
-#         temp = temp / indep_1ens[:, jj]
-#         # temp = (temp - (indep_1ens[:, jj] - 1)) / cc
-#         indep_ens.append(temp)
-#     # average difference between members of the same model
-
-#     # baseline independence (typical inter-dependence between models)
-#     # indep_1ens = np.mean(indep_1ens, axis=1)
-
-#     indep_ens = np.mean(indep_ens, axis=0)
-#     import ipdb; ipdb.set_trace()
+    return np.atleast_1d(sigmas_i[idx_i_min])
