@@ -26,18 +26,16 @@ ClimWIP is written in pure Python and requires at least Python version 3.6. It c
 
 To install dependencies it is easiest to use conda, running
 
-<pre><code>
-cd ClimWIP
+<code>cd ClimWIP
 conda env create -f environment.yml
 conda activate ClimWIP
-</code></pre>
+</code>
 
 Alternatively, create a new environment and install the required packages manually. This is easiest achieved by running the following:
 
-<pre><code>
-conda create -n ClimWIP python=3.7 xarray regionmask python-cdo netCDF4
+<code>conda create -n ClimWIP python=3.7 xarray regionmask python-cdo netCDF4
 conda activate ClimWIP
-</code></pre>
+</code>
 
 
 Setup and Data Paths
