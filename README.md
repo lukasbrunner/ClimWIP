@@ -24,25 +24,20 @@ ClimWIP is written in pure Python and requires at least Python version 3.6. It c
 
 <code>git clone ...</code>
 
-To install dependencies it is easiest to use conda, running
-
-<code>cd ClimWIP
-conda env create -f environment.yml
-conda activate ClimWIP
-</code>
+To install dependencies change into the newly created directory (by default with <code>cd ClimWIP</code>) and run
+<code>conda env create -f environment.yml</code>
 
 Alternatively, create a new environment and install the required packages manually. This is easiest achieved by running the following:
+<code>conda create -n ClimWIP python=3.7 xarray regionmask python-cdo netCDF4</code>
 
-<code>conda create -n ClimWIP python=3.7 xarray regionmask python-cdo netCDF4
-conda activate ClimWIP
-</code>
+Activate the environment:
+<code>conda activate ClimWIP</code>
 
 
 Setup and Data Paths
 --------------------
 
-ClimWIP makes several assumptions about the folder structure and filename conventions when collection all available models. It is developed and tested on the ETH CMIP5/CMIP6 next generation archive which is similar to the ESGF structure, but slightly flatter. Basically the assumed structure is:
-
+ClimWIP makes several assumptions about the folder structure and filename conventions when collection the models to weight. It is developed and tested on the ETH CMIP5/CMIP6 next generation archive which is similar to the ESGF structure, but slightly flatter. Basically the assumed structure is:
 <code>BASE_PATH/varn/varn_mon_model_scenario_ensemble_g025.nc</code>
 
 The filename conventions are constrained to core/get_filenames.py. Depending on the structure on your system it might be necessary to re-write parts of the functions there.
@@ -53,10 +48,11 @@ ClimWIP saves all calculated diagnostics to speed up repeated calls using the sa
 Usage
 -----
 
-Run <code>cp config_default.ini config.ini</code> to copy the default configuration file. Update the required fields in the config.ini file to match your system (mainly that will be the 'data_path' field).
+Run
+<code>cp configs/config_default.ini configs/config.ini</code>
+to copy the default configuration file. Then update the required fields in the config.ini file to match your system (mainly that will be the 'data_path' field).
 
 To see the call structure of the ClimWIP main file run
-
 <code>./ClimWIP_main.py -h</code>
 
 To run the DEFAULT configuration from the configs/config.ini file it is sufficient to run
