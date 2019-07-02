@@ -6,16 +6,18 @@ A collection of functions to do Climate model Weighting by Independence and Perf
 Content
 -------
 
-* [Idea](#idea)
+* [Idea and Publications](#idea)
 * [Requirements and Installation](#requirements)
 * [Setup and Data Paths](#setup)
 * [Usage](#usage)
+* [Contributors](#contributors)
 * [License](#license)
 
 
-Idea
-----
+Idea and Publications
+---------------------
 
+Lorenz, R. et al (2018): Prospects and caveats of weighting climate models for summer maximum temperature projections over North America. _Journal of Geophysical Research: Atmospheres_, 123, 4509–4526. DOI: <a href="http://doi.wiley.com/10.1029/2017JD027992">10.1029/2017JD027992</a>
 
 Requirements and Installation
 -----------------------------
@@ -37,8 +39,9 @@ Activate the environment:
 Setup and Data Paths
 --------------------
 
-ClimWIP makes several assumptions about the folder structure and filename conventions when collection the models to weight. It is developed and tested on the ETH CMIP5/CMIP6 next generation archive which is similar to the ESGF structure, but slightly flatter. Basically the assumed structure is:
-<code>BASE_PATH/varn/varn_mon_model_scenario_ensemble_g025.nc</code>
+ClimWIP makes several assumptions about the folder structure and filename conventions when collection the models to weight. It is developed and tested on the ETH CMIP3/CMIP5/CMIP6 next generation archives which is similar to the ESGF structure, but slightly flatter. Basically the assumed structure is:
+<code>BASE_PATH/<varn>/varn_mon_model_scenario_ensemble_g025.nc</code> (CMIP3, 5) or
+<code>BASE_PATH/varn/mon/g025/varn_mon_model_scenario_ensemble_g025.nc</code> (CMIP6).
 
 The filename conventions are constrained to core/get_filenames.py. Depending on the structure on your system it might be necessary to re-write parts of the functions there.
 
@@ -72,6 +75,14 @@ this will also automatically set the logger to log to a file instead of Stdout.
 If the 'plot' field in the configuration is set to True ClimWIP will create simple plots with intermediate results by default in <code>./plots/process_plots</code>.
 
 The results will by default be saved as netCDF4 files in <code>./data</code> and will be named after their respective configuration file.
+
+
+Contributors
+------------
+
+- Jan Sedlacek
+- Lukas Brunner
+- Ruth Lorenz
 
 
 License
