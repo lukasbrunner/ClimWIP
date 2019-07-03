@@ -29,9 +29,9 @@ Requirements and Installation
 
 ClimWIP is written in pure Python and requires at least Python version 3.6. It can be cloned from this GitHub repository using
 
-<code>git clone ...</code>
+<code>git clone https://git.iac.ethz.ch/model_weighting/model_weighting.git</code>
 
-To install dependencies change into the newly created directory (by default with <code>cd ClimWIP</code>) and run
+To install dependencies change into the newly created directory (by default with <code>cd ClimWIP</code> (and at the moment also <code>git checkout paper</code>)) and run
 <code>conda env create -f environment.yml</code>
 
 Alternatively, create a new environment and install the required packages manually. This is easiest achieved by running the following:
@@ -45,7 +45,7 @@ Setup and Data Paths
 --------------------
 
 ClimWIP makes several assumptions about the folder structure and filename conventions when collection the models to weight. It is developed and tested on the ETH CMIP3/CMIP5/CMIP6 next generation archives which is similar to the ESGF structure, but slightly flatter. Basically the assumed structure is:
-<code>BASE_PATH/<varn>/varn_mon_model_scenario_ensemble_g025.nc</code> (CMIP3, 5) or
+<code>BASE_PATH/varn/varn_mon_model_scenario_ensemble_g025.nc</code> (CMIP3, 5) or
 <code>BASE_PATH/varn/mon/g025/varn_mon_model_scenario_ensemble_g025.nc</code> (CMIP6).
 
 The filename conventions are constrained to core/get_filenames.py. Depending on the structure on your system it might be necessary to re-write parts of the functions there.
