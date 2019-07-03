@@ -1,7 +1,7 @@
 ClimWIP
 =======
 
-A collection of functions to do Climate model Weighting by Independence and Performance (ClimWIP).
+A collection of functions to perform Climate model Weighting by Independence and Performance (ClimWIP).
 
 Content
 -------
@@ -11,13 +11,18 @@ Content
 * [Setup and Data Paths](#setup)
 * [Usage](#usage)
 * [Contributors](#contributors)
+* [Attribution](#attribution)
 * [License](#license)
 
 
 Idea and Publications
 ---------------------
 
-Lorenz, R. et al (2018): Prospects and caveats of weighting climate models for summer maximum temperature projections over North America. _Journal of Geophysical Research: Atmospheres_, 123, 4509–4526. DOI: <a href="http://doi.wiley.com/10.1029/2017JD027992">10.1029/2017JD027992</a>
+
+Lorenz, R. et al. (2018): Prospects and caveats of weighting climate models for summer maximum temperature projections over North America. _Journal of Geophysical Research: Atmospheres_, 123, 4509–4526. DOI: <a href="http://doi.wiley.com/10.1029/2017JD027992">10.1029/2017JD027992</a>
+
+Knutti, R. at al. (2017): A climate model projection weighting scheme accounting for performance and interdependence, _Geophys. Res. Lett._, 44, 1909–1918. DOI <a href="http://doi.wiley.com/10.1002/2016GL072012">10.1002/2016GL072012</a>
+
 
 Requirements and Installation
 -----------------------------
@@ -83,6 +88,11 @@ Contributors
 - Jan Sedlacek
 - Lukas Brunner
 - Ruth Lorenz
+
+Attribution
+-----------
+
+If you publish scientific work based on this code please consider citing some of our papers. If you want to acknowledge us consider putting this sentence in the Acknowledgments: "We thank Jan Sedlacek, Lukas Brunner, and Ruth Lorenz (ETH Zurich) for providing the ClimWIP model weighting package."
 
 
 License
