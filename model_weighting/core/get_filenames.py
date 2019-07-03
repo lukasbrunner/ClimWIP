@@ -32,18 +32,26 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
-def get_model_from_filename(filename):
+def get_model_from_filename(filename, id_):
     """Return the model identifier for a given filename."""
     parts = os.path.basename(filename).split('_')
-    return f'{parts[2]}_{parts[4]}'
+    return f'{parts[2]}_{parts[4]}_{id_}'
 
 
-def get_filenames_var(varn, scenario, base_path):
+def get_filenames_var(varn, id_, scenario, base_path):
     """Get all filenames matching the set criteria."""
-    filename_pattern = f'{varn}_mon_*_{scenario}_*_g025.nc'
-    fullpath = os.path.join(base_path, varn, filename_pattern)
+    if id_ == 'CMIP6':
+        filename_pattern = f'{varn}/mon/g025/{varn}_mon_*_{scenario}_*_g025.nc'
+    elif id_ == 'CMIP5':
+        filename_pattern = f'{varn}/{varn}_mon_*_{scenario}_*_g025.nc'
+    elif id_ == 'CMIP3':
+        filename_pattern = f'{varn}/{varn}_mon_*_{scenario}_*_g025.nc'
+    else:
+        raise ValueError(f'{id_} is not a valid model_id')
+    fullpath = os.path.join(base_path, filename_pattern)
     filenames = glob.glob(fullpath)
-    return {get_model_from_filename(fn): fn for fn in filenames}
+    assert len(filenames) != 0, f'no models found for {varn}, {id_}, {scenario}'
+    return {get_model_from_filename(fn, id_): fn for fn in filenames}
 
 
 def get_unique_filenames(filenames, unique_models):
@@ -54,7 +62,7 @@ def get_unique_filenames(filenames, unique_models):
     return filenames
 
 
-def get_filenames(varns, scenario, base_path, all_members):
+def get_filenames(varns, ids, scenarios, base_paths, all_members):
     """
     Collects all filenames matching the set criteria.
 
@@ -66,10 +74,12 @@ def get_filenames(varns, scenario, base_path, all_members):
     ----------
     varns : list of strings
         A list of valid CMIP5 variable names.
+    id_ : {'CMIP6', 'CMIP5', 'CMIP3'}
+        A valid model ID
     scenario : string
-        A valid CMIP5 scenario.
+        A valid scenario.
     base_path : string
-        Base path of the CMIP5 next generation archive.
+        Base path of the model archive
     all_members : bool
         If False only one initial-condition member per model will be used.
         Note that due to sorting this might not necessarily be the first
@@ -91,31 +101,34 @@ def get_filenames(varns, scenario, base_path, all_members):
     """
     filenames = {}
     for varn in varns:  # get all files for all variables first
-        filenames[varn] = get_filenames_var(varn, scenario, base_path)
+        filenames[varn] = {}
+        for id_, scenario, base_path in zip(ids, scenarios, base_paths):
+            filenames[varn].update(get_filenames_var(varn, id_, scenario, base_path))
+
         try:
             common_models = np.intersect1d(common_models, list(filenames[varn].keys()))
         except NameError:
             common_models = list(filenames[varn].keys())
-
-    unique_models = []
-    unique_common_models = []
-    for model_ensemble in common_models:
-        model = model_ensemble.split('_')[0]
-        if model not in unique_models:
-            unique_models.append(model)
-            unique_common_models.append(model_ensemble)
 
     for varn in varns:  # delete models not available for all variables
         delete_models = np.setdiff1d(list(filenames[varn].keys()), common_models)
         for delete_model in delete_models:
             filenames[varn].pop(delete_model)
 
+    unique_models = []
+    unique_common_models = []
+    for model_ensemble in common_models:
+        model = model_ensemble.split('_')[0] + '_' + model_ensemble.split('_')[2]
+        if model not in unique_models:
+            unique_models.append(model)
+            unique_common_models.append(model_ensemble)
+
     if not all_members:
         filenames = get_unique_filenames(filenames, unique_common_models)
 
     logger.info(f'{len(unique_common_models)} models found')
     logger.info(f'{len(filenames[varns[0]])} files found')
-    logger.debug(f', '.join([model.split('_')[0] for model in unique_common_models]))
+    logger.info(f', '.join(sorted(unique_models, key=lambda x: x.split('_')[1])))
     logger.debug(', '.join(filenames[varns[0]].keys()))
 
     return filenames, np.array(unique_common_models)
