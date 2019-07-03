@@ -35,7 +35,7 @@ To install dependencies change into the newly created directory (by default with
 <code>conda env create -f environment.yml</code>
 
 Alternatively, create a new environment and install the required packages manually. This is easiest achieved by running the following:
-<code>conda create -n ClimWIP python=3.7 xarray regionmask python-cdo netCDF4</code>
+<code>conda create -n ClimWIP python=3.7 xarray=0.12.2 regionmask python-cdo netCDF4</code>
 
 Activate the environment:
 <code>conda activate ClimWIP</code>
@@ -53,8 +53,8 @@ The filename conventions are constrained to core/get_filenames.py. Depending on 
 ClimWIP saves all calculated diagnostics to speed up repeated calls using the same diagnostics. The default path for this is <code>./data</code>, in which sub-folders for each variable will be created. The final results will also be save in <code>./data</code> as netCDF4 files. They will be named after the configuration name, existing files will be overwritten.
 
 
-Usage
------
+Usage and Testing
+-----------------
 
 Run
 <code>cp configs/config_default.ini configs/config.ini</code>
@@ -79,7 +79,11 @@ this will also automatically set the logger to log to a file instead of Stdout.
 
 If the 'plot' field in the configuration is set to True ClimWIP will create simple plots with intermediate results by default in <code>./plots/process_plots</code>.
 
-The results will by default be saved as netCDF4 files in <code>./data</code> and will be named after their respective configuration file.
+The results will by default be saved as netCDF4 files in <code>./data</code> and will be named after their respective configuration (note that this means they can be overwritten if different configuration files have configuration with the exact same name!).
+
+If you are using the ETH next generation archives with the standard settings you can run
+<code>./run_all.py configs/config_default.ini</code>
+to test several simple cases.
 
 
 Contributors
