@@ -4,7 +4,9 @@
 """
 Copyright 2019 Lukas Brunner, ETH Zurich
 
-This program is free software: you can redistribute it and/or modify
+This file is part of ClimWIP.
+
+ClimWIP is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
@@ -94,7 +96,6 @@ def test_config(cfg):
         not os.access(cfg.plot_path, os.W_OK | os.X_OK)):
         raise ValueError('plot_path is not writable')
     if not np.all([isinstance(cfg.overwrite, bool),
-                   isinstance(cfg.debug, bool),
                    isinstance(cfg.plot, bool)]):
         raise ValueError('Typo in overwrite, debug, plot?')
     if cfg.ensemble_independence and not cfg.ensembles:
@@ -107,19 +108,31 @@ def test_config(cfg):
         cfg.obs_uncertainty
     except AttributeError:
         cfg.obs_uncertainty = 'center'
-    if isinstance(cfg.obsdata, str):
-        cfg.obsdata = [cfg.obsdata]
+    if isinstance(cfg.obs_id, str):
+        cfg.obs_id = [cfg.obs_id]
+    if isinstance(cfg.obs_path, str):
         cfg.obs_path = [cfg.obs_path]
-        if len(cfg.obsdata) != len(cfg.obs_path):
-            errmsg = 'obsdata and obs_path need to have same length!'
-            logger.error(errmsg)
-            raise ValueError(errmsg)
+    if len(cfg.obs_id) != len(cfg.obs_path):
+        errmsg = 'obs_id and obs_path need to have same length!'
+        logger.error(errmsg)
+        raise ValueError(errmsg)
     try:
         cfg.idx_lats = np.atleast_1d(cfg.idx_lats)
         cfg.idx_lons = np.atleast_1d(cfg.idx_lons)
     except AttributeError:
         cfg.idx_lats = None
         cfg.idx_lons = None
+
+    if isinstance(cfg.model_path, str):
+        cfg.model_path = [cfg.model_path]
+    if isinstance(cfg.model_id, str):
+        cfg.model_id = [cfg.model_id]
+    if isinstance(cfg.model_scenario, str):
+        cfg.model_scenario = [cfg.model_scenario]
+    if len({len(cfg[key]) for key in cfg.keys() if 'model_' in key}) != 1:
+        errmsg = 'All model_* variables need to have same length'
+        raise ValueError(errmsg)
+
     return None
 
 
@@ -196,6 +209,7 @@ def calc_target(filenames, cfg):
             target = calculate_diagnostic(
                 infile=filename,
                 diagn=cfg.target_diagnostic,
+                id_=model_ensemble.split('_')[2],
                 base_path=base_path,
                 time_period=(
                     cfg.target_startyear,
@@ -213,6 +227,7 @@ def calc_target(filenames, cfg):
             if cfg.target_startyear_ref is not None:
                 target_hist = calculate_diagnostic(
                     infile=filename,
+                    id_=model_ensemble.split('_')[2],
                     diagn=cfg.target_diagnostic,
                     base_path=base_path,
                     time_period=(
@@ -292,6 +307,7 @@ def calc_predictors(filenames, cfg):
 
                 diagnostic = calculate_diagnostic(
                     infile=filename,
+                    id_=model_ensemble.split('_')[2],
                     diagn=diagn,
                     base_path=base_path,
                     time_period=(
@@ -322,16 +338,17 @@ def calc_predictors(filenames, cfg):
             kwargs={'lat': diagnostics['lat'].data},  # NOTE: comment out for unweighted
             vectorize=True,
         )
+
         diagnostics['perfect_model_ensemble'] = diagnostics['model_ensemble'].data
         logger.debug('Calculate independence matrix... DONE')
 
-        if cfg.obsdata is not None:
+        if cfg.obs_id is not None:
             logger.debug('Read observations & calculate model quality...')
             obs_list = []
-            for obs_path, obsdata in zip(cfg.obs_path, cfg.obsdata):
-                filename = os.path.join(obs_path, f'{varn}_mon_{obsdata}_g025.nc')
+            for obs_path, obs_id in zip(cfg.obs_path, cfg.obs_id):
+                filename = os.path.join(obs_path, f'{varn}_mon_{obs_id}_g025.nc')
 
-                with utils.LogTime(f'Calculate diagnostic for {obsdata}', level='debug'):
+                with utils.LogTime(f'Calculate diagnostic for {obs_id}', level='debug'):
                     obs = calculate_diagnostic(
                         infile=filename,
                         diagn=diagn,
@@ -344,7 +361,7 @@ def calc_predictors(filenames, cfg):
                         mask_ocean=cfg.predictor_masko[idx],
                         region=cfg.predictor_regions[idx],
                         overwrite=cfg.overwrite,
-                        regrid=obsdata in REGRID_OBS,
+                        regrid=obs_id in REGRID_OBS,
                         idx_lats=cfg.idx_lats,
                         idx_lons=cfg.idx_lons,
                     )
@@ -395,7 +412,7 @@ def calc_predictors(filenames, cfg):
 
         # different methods of normalizing each diagnostic
         normalizer = diagnostics['rmse_models'].data
-        if cfg.obsdata:
+        if cfg.obs_id is not None:
             normalizer = np.concatenate([normalizer, [diagnostics['rmse_obs'].data]], axis=0)
 
         if cfg.performance_normalize is None:
@@ -416,7 +433,7 @@ def calc_predictors(filenames, cfg):
             raise NotImplementedError
 
         diagnostics['rmse_models'] /= normalizer
-        if cfg.obsdata:
+        if cfg.obs_id is not None:
             diagnostics['rmse_obs'] /= normalizer
 
         logger.debug('Normalize data... DONE')
@@ -426,7 +443,7 @@ def calc_predictors(filenames, cfg):
         # --- optional: plot RMSE matrix ---
         if cfg.plot:
             plotn = plot_rmse(diagnostics['rmse_models'], idx, cfg,
-                              diagnostics['rmse_obs'] if cfg.obsdata is not None else None)
+                              diagnostics['rmse_obs'] if cfg.obs_id is not None else None)
             add_revision(diagnostics)
             # diagnostics.to_netcdf(plotn + '.nc')  # NOTE: also save the data
             logger.debug('Saved plot data: {}.nc'.format(plotn))
@@ -438,7 +455,7 @@ def calc_predictors(filenames, cfg):
         [dd['rmse_models'] for dd in diagnostics_all], dim='diagnostics')
     delta_i = delta_i.mean('diagnostics')
     delta_i.name = 'delta_i'
-    if cfg.obsdata:
+    if cfg.obs_id is not None:
         delta_q = xr.concat(
             [dd['rmse_obs'] for dd in diagnostics_all], dim='diagnostics')
         delta_q = delta_q.mean('diagnostics')
@@ -449,7 +466,7 @@ def calc_predictors(filenames, cfg):
     # --- optional: plot mean RMSE matrix ---
     if cfg.plot:
         plotn = plot_rmse(delta_i, 'mean', cfg,
-                          delta_q if cfg.obsdata else None)
+                          delta_q if cfg.obs_id is not None else None)
         add_revision(diagnostics)
         # diagnostics.to_netcdf(plotn + '.nc')  # also save the data
         logger.debug('Saved plot data: {}.nc'.format(plotn))
@@ -521,18 +538,21 @@ def calc_sigmas(targets, delta_i, unique_models, cfg, n_sigmas=50):
         perc_lower=cfg.percentiles[0],
         perc_upper=cfg.percentiles[1])
 
-    if cfg.inside_ratio is None:
+    force_inside_ratio = cfg.inside_ratio == 'force'
+    if cfg.inside_ratio is None or cfg.inside_ratio == 'force':
         cfg.inside_ratio = cfg.percentiles[1] - cfg.percentiles[0]
     inside_ok = inside_ratio >= cfg.inside_ratio
 
     if not np.any(inside_ok):
         logmsg = f'Perfect model test failed ({inside_ratio.max():.4f} < {cfg.inside_ratio:.4f})!'
-        raise ValueError(logmsg)
-        # NOTE: adjust inside_ratio to force a result (probably not recommended?)
-        # inside_ok = inside_ratio >= np.max(inside_ratio[:, idx_i_min])
-        # logmsg += ' Setting inside_ratio to max: {}'.format(
-        #     np.max(inside_ratio[:, idx_i_min]))
-        # logger.warning(logmsg)
+        if force_inside_ratio:
+            # adjust inside_ratio to force a result (probably not recommended?)
+            inside_ok = inside_ratio >= np.max(inside_ratio[:, idx_i_min])
+            logmsg += ' force=True: Setting inside_ratio to max: {}'.format(
+                np.max(inside_ratio[:, idx_i_min]))
+            logger.warning(logmsg)
+        else:
+            raise ValueError(logmsg)
 
     if cfg.ensemble_independence:
         idx_q_min = np.argmin(1-inside_ok[:, 0])
@@ -587,7 +607,7 @@ def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg):
     weights : xarray.Dataset, same shape as delta_q
         An array of weights
     """
-    if cfg.obsdata:
+    if cfg.obs_id is not None:
         numerator, denominator = calculate_weights(delta_q, delta_i, sigma_q, sigma_i)
         weights = numerator/denominator
         weights /= weights.sum()
@@ -613,7 +633,7 @@ def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg):
     ds.attrs['target'] = cfg.target_diagnostic
     ds.attrs['region'] = cfg.target_region
 
-    if cfg.plot and cfg.obsdata:
+    if cfg.plot and cfg.obs_id:
         plot_weights(ds, cfg, numerator, denominator)
         plot_weights(ds, cfg, numerator, denominator, sort=True)
 
@@ -660,7 +680,8 @@ def main(args):
 
     log.start('main().set_up_filenames(cfg)')
     varns = np.unique([cfg.target_diagnostic] + cfg.predictor_diagnostics)
-    filenames, unique_models = get_filenames(varns, cfg.scenario, cfg.data_path, cfg.ensembles)
+    filenames, unique_models = get_filenames(
+        varns, cfg.model_id, cfg.model_scenario, cfg.model_path, cfg.ensembles)
 
     log.start('main().calc_target(fn, cfg)')
     targets, clim = calc_target(filenames[cfg.target_diagnostic], cfg)
