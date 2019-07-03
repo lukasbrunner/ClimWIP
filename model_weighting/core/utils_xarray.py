@@ -228,15 +228,15 @@ def weighted_distance_matrix(data, lat=None):
     else:
         w_lat = np.cos(np.radians(lat))
     weights = np.tile(w_lat, (data.shape[-1], 1)).swapaxes(0, 1).ravel()
-    weights /= weights.sum()
     data = data.reshape((data.shape[0], weights.shape[0]))
 
-    # remove nans by weighting them with 0
-    idxs = np.where(np.isnan(data))
-    data_new = data.copy()
-    data_new[idxs] = 0
-    data = data_new
-    weights[idxs[0]] = 0
+    # remove nans
+    idx = np.where(np.isfinite(data[0]))[0]
+    data = data[:, idx]
+    weights = weights[idx]
+
+    # normalize (!)
+    weights /= weights.sum()
 
     d_matrix = squareform(pdist(data, metric='euclidean', w=weights))
     np.fill_diagonal(d_matrix, np.nan)
