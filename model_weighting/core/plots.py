@@ -264,7 +264,7 @@ def plot_weights(ds, cfg, nn, dd, sort=False):
         ax.set_xticks(xx)
         ax.set_xticklabels(model_ensemble[sorter])
     else:  # plot xlabel only for first ensemble member
-        models = [*map(lambda x: x.split('_')[0], model_ensemble)]
+        models = [*map(lambda x: x.split('_')[0] + '_' + x.split('_')[2], model_ensemble)]
         _, idx = np.unique(models, return_index=True)  # index of unique models
         models = np.array(models)[idx]
         ax.set_xticks(idx)
