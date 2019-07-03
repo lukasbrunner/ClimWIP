@@ -271,6 +271,8 @@ def trend(data):
 
 
 def correlation(arr1, arr2):
+    if np.any(np.isnan(arr1)) or np.any(np.isnan(arr2)):
+        return np.nan
     return stats.pearsonr(arr1, arr2)[0]
 
 

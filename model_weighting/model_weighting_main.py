@@ -108,14 +108,17 @@ def test_config(cfg):
         cfg.obs_uncertainty
     except AttributeError:
         cfg.obs_uncertainty = 'center'
-    if isinstance(cfg.obs_id, str):
-        cfg.obs_id = [cfg.obs_id]
-    if isinstance(cfg.obs_path, str):
-        cfg.obs_path = [cfg.obs_path]
-    if len(cfg.obs_id) != len(cfg.obs_path):
-        errmsg = 'obs_id and obs_path need to have same length!'
-        logger.error(errmsg)
-        raise ValueError(errmsg)
+
+    if cfg.obs_id is not None and cfg.obs_path is not None:
+        if isinstance(cfg.obs_id, str):
+            cfg.obs_id = [cfg.obs_id]
+        if isinstance(cfg.obs_path, str):
+            cfg.obs_path = [cfg.obs_path]
+        if len(cfg.obs_id) != len(cfg.obs_path):
+            errmsg = 'obs_id and obs_path need to have same length!'
+            logger.error(errmsg)
+            raise ValueError(errmsg)
+
     try:
         cfg.idx_lats = np.atleast_1d(cfg.idx_lats)
         cfg.idx_lons = np.atleast_1d(cfg.idx_lons)
@@ -679,7 +682,17 @@ def main(args):
     cfg = read_config(args.config, args.filename)
 
     log.start('main().set_up_filenames(cfg)')
-    varns = np.unique([cfg.target_diagnostic] + cfg.predictor_diagnostics)
+
+    # get basic variables for diagnostics
+    varns = []
+    for varn in cfg.predictor_diagnostics:
+        if varn in DERIVED:
+            varns.append(DERIVED[varn][0])
+            varns.append(DERIVED[varn][1])
+        else:
+            varns.append(varn)
+
+    varns = np.unique([cfg.target_diagnostic] + varns)
     filenames, unique_models = get_filenames(
         varns, cfg.model_id, cfg.model_scenario, cfg.model_path, cfg.ensembles)
 
