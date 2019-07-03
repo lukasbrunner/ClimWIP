@@ -27,6 +27,7 @@ Abstract
 
 """
 import os
+import re
 import sys
 import logging
 import warnings
@@ -146,6 +147,7 @@ def standardize_units(da, varn):
 
 def calculate_basic_diagnostic(infile, varn,
                                outfile=None,
+                               id_=None,
                                time_period=None,
                                season=None,
                                time_aggregation=None,
@@ -168,8 +170,10 @@ def calculate_basic_diagnostic(infile, varn,
         Full path of the input file. Must contain varn.
     varn : str
         The variable contained in infile.
-    outfile : str
+    outfile : str, optional
         Full path of the output file. Path must exist.
+    id_ : {'CMIP6', 'CMIP5', 'CMIP3'}, optional
+        A valid model ID
     time_period : tuple of two strings, optional
         Start and end of the time period. Both strings must be on of
         {"yyyy", "yyyy-mm", "yyyy-mm-dd"}.
@@ -194,11 +198,23 @@ def calculate_basic_diagnostic(infile, varn,
         logger.debug('Diagnostic already exists & overwrite=False, skipping.')
         return xr.open_dataset(outfile, use_cftime=True)
 
-    if regrid:
-        infile = cdo.remapbil(os.path.join(REGION_DIR, MASK),
-                              options='-b F64', input=infile)
+    if id_ == 'CMIP6':  # need to concat historical file
+        scenario = infile.split('_')[-3]
+        assert re.compile('[rcps]{3}[1-9]{3}$').match(scenario), 'not a scenario!'
+        histfile = infile.replace(scenario, 'historical')
+        da_hist = xr.open_dataset(histfile)[varn]
+        da_scen = xr.open_dataset(infile)[varn]
 
-    da = xr.open_dataset(infile, use_cftime=True)[varn]
+        try:
+            da_hist = da_hist.drop('height')
+            da_scen = da_scen.drop('height')
+        except ValueError:
+            pass
+
+        da = xr.concat([da_hist, da_scen], dim='time')
+    else:
+        da = xr.open_dataset(infile, use_cftime=True)[varn]
+
     enc = da.encoding
     da = flip_antimeridian(da)
     assert np.all(da['lat'].data == np.arange(-88.75, 90., 2.5))
