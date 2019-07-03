@@ -215,7 +215,6 @@ def calculate_basic_diagnostic(infile, varn,
     else:
         da = xr.open_dataset(infile, use_cftime=True)[varn]
 
-    enc = da.encoding
     da = flip_antimeridian(da)
     assert np.all(da['lat'].data == np.arange(-88.75, 90., 2.5))
     assert np.all(da['lon'].data == np.arange(-178.75, 180., 2.5))
@@ -318,7 +317,6 @@ def calculate_basic_diagnostic(infile, varn,
 
     ds = da.to_dataset(name=varn)
     ds[varn].attrs = attrs
-    ds[varn].encoding = enc
     if outfile is not None:
         ds.to_netcdf(outfile)
     return ds
