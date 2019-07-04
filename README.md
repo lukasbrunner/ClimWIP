@@ -9,7 +9,7 @@ Content
 * [Idea and Publications](#idea)
 * [Requirements and Installation](#requirements)
 * [Setup and Data Paths](#setup)
-* [Usage](#usage)
+* [Usage and Testing](#usage)
 * [Contributors](#contributors)
 * [Attribution](#attribution)
 * [License](#license)
