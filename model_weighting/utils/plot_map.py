@@ -232,6 +232,7 @@ def main():
     if args.ext == 'show':
         plt.show()
     else:
+        os.makedirs(PLOTPATH, exist_ok=True)
         plot_filename = os.path.basename(args.filename).replace(
             '.nc', f'.{args.ext}')
         filename = os.path.join(PLOTPATH, f'map_{plot_filename}')
