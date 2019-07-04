@@ -3,6 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# project folders
+model_weighting/configs/
+!model_weighting/configs/config_default.ini
+
 # emacs backup files
 *~
 
