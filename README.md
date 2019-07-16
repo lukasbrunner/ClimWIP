@@ -29,7 +29,7 @@ Requirements and Installation
 
 ClimWIP is written in pure Python and requires at least Python version 3.6. It can be cloned from this GitHub repository using
 
-<code>git clone https://git.iac.ethz.ch/model_weighting/model_weighting.git</code>
+<code>git clone https://github.com/lukasbrunner/ClimWIP.git</code>
 
 To install dependencies change into the newly created directory (by default with <code>cd ClimWIP</code> (and at the moment also <code>git checkout paper</code>)) and run
 <code>conda env create -f environment.yml</code>
@@ -103,7 +103,7 @@ Contributors
 Attribution
 -----------
 
-If you publish scientific work based on this code please consider citing some of our papers. If you want to acknowledge us consider putting this sentence in the Acknowledgments: "We thank Jan Sedlacek, Lukas Brunner, and Ruth Lorenz (ETH Zurich) for providing the ClimWIP model weighting package."
+If you publish scientific work based on this code please consider citing some of our papers. If you want to acknowledge us consider putting this sentence in the Acknowledgments: "We thank Jan Sedlacek, Lukas Brunner, and Ruth Lorenz (ETH Zurich) for providing the Climate model Weighting by Independence and Performance (ClimWIP) package."
 
 
 License
