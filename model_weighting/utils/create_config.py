@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-06-28 08:37:33 lukbrunn>
+Time-stamp: <2019-07-04 16:07:47 lukbrunn>
 
 (c) 2019 under a MIT License (https://mit-license.org)
 
@@ -16,8 +16,8 @@ import os
 
 PATH = '../configs/'
 FILE = 'points_tas.ini'
-NR_LATS = 19
-NR_LONS = 20
+NR_LATS = 72
+NR_LONS = 144
 
 with open(os.path.join(PATH, FILE), 'a') as ff:
     for idx_lat in range(NR_LATS):
