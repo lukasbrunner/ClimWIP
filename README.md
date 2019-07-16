@@ -40,6 +40,13 @@ Alternatively, create a new environment and install the required packages manual
 Activate the environment:
 <code>conda activate ClimWIP</code>
 
+[Optional] To use some of the utility functions it is necessary to add the project to your PYTHONPATH environment variable. In the base directory type
+<code>pwd</code>
+to get the current path. To temporarily add this path type
+<code>export PYTHONPATH=$PYTHONPATH:\<output of pwd\></code>
+To permanently add it run
+<code>echo 'export PYTHONPATH=$PYTHONPATH:\<output of pwd\>' >> ~/.bashrc</code>
+
 
 Setup and Data Paths
 --------------------
