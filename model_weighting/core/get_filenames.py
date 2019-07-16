@@ -74,12 +74,12 @@ def get_filenames(varns, ids, scenarios, base_paths, all_members):
     ----------
     varns : list of strings
         A list of valid CMIP5 variable names.
-    id_ : {'CMIP6', 'CMIP5', 'CMIP3'}
-        A valid model ID
-    scenario : string
-        A valid scenario.
-    base_path : string
-        Base path of the model archive
+    ids : string or list of strings {'CMIP6', 'CMIP5', 'CMIP3'}
+        Valid model IDs.
+    scenarios : string or list of strings
+        Valid scenarios. Must have same length as ids.
+    base_paths : string or list of strings
+        Base paths of the model archives. Must have same length as ids.
     all_members : bool
         If False only one initial-condition member per model will be used.
         Note that due to sorting this might not necessarily be the first
@@ -99,6 +99,14 @@ def get_filenames(varns, ids, scenarios, base_paths, all_members):
         effect as setting all_members=False. This is indented for use in the
         perfect model test.
     """
+    if isinstance(ids, str):
+        ids = [ids]
+    if isinstance(scenarios, str):
+        scenarios = [scenarios]
+    if isinstance(base_paths, str):
+        base_paths = [base_paths]
+    if len(ids) != len(scenarios) or len(ids) != len(base_paths):
+        raise ValueError('ids, scenarios, and base_paths need to have same lenght')
     filenames = {}
     for varn in varns:  # get all files for all variables first
         filenames[varn] = {}
