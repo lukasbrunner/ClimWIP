@@ -36,7 +36,7 @@ import numpy as np
 import xarray as xr
 from cdo import Cdo
 
-from core.utils_xarray import (
+from .utils_xarray import (
     detrend,
     trend,
     correlation,
@@ -154,7 +154,7 @@ def calculate_basic_diagnostic(infile, varn,
                                mask_ocean=False,
                                region='GLOBAL',
                                overwrite=False,
-                               regrid=False,
+                               regrid=False,  # TODO, DELETE
                                idx_lats=None,
                                idx_lons=None):
     """
