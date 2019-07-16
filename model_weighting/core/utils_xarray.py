@@ -344,44 +344,90 @@ def flip_antimeridian(ds, to='Pacific', lonn=None):
         return da
     return ds
 
-# def standardize_dimensions(ds, latn='lat', lonn='lon', timen='time',
-#                            antimeridian='Pacific',
-#                            lat_ascending=True, time={}):
-#     """Standardize the dimensions of a ds to the given values.
-#     All parameters are optional and can be set to None to be skipped.
 
-#     Parameters
-#     ----------
-#     ds : {xarray.Dataset, xarray.DataArray}
-#         Input dataset, needs to contain latitude and longitude dimensions.
-#     latn : str, optional
-#         Name of the new latitude dimension.
-#     lonn : str, optional
-#         Name of the new longitude dimension.
-#     timen : str, optional
-#         Name of the new time dimension.
-#     antimeridian : {'Pacific', 'Europe'}, optional
-#         New location of the antimeridian.
-#     lat_ascending : bool, optional
-#         New order of the latitude dimension.
-#     time : dict, optional
-#         Passed to standardize_time (see docstring for more information)
+def quantile(data, quantiles, weights=None, interpolation='linear',
+             old_style=False):
+    """Calculates weighted quantiles.
 
-#     Returns
-#     -------
-#     ds_standardized : same type as input
-#         A dataset where some dimensions have been standardized.
-#     """
-#     if latn is not None:
-#         ds = ds.rename({get_latitude_name(ds): latn})
-#     if lonn is not None:
-#         ds = ds.rename({get_longitude_name(ds): lonn})
-#     if timen is not None:
-#         ds = ds.rename({get_time_name(ds): timen})
-#     if antimeridian is not None:
-#         ds = flip_antimeridian(ds, to=antimeridian)
-#     if lat_ascending is not None:
-#         ds = sort_latitude(ds, ascending=lat_ascending)
-#     if time is not None:
-#         ds = standardize_time(ds, **time)
-#     return ds
+    Parameters:
+    - data (np.array): Array of data (N,)
+    - quantiles (np.array): Array of quantiles (M,) in [0, 1]
+    - weights=None (np.array, optional): Array of weights (N,)
+    - interpolation='linear' (str, optional): String giving the interpolation
+      method (equivalent to np.percentile). "This optional parameter specifies
+      the interpolation method to use when the desired quantile lies between
+      two data points." One of (with i < j):
+      * linear: i + (j - i) * fraction where fraction is the fractional part
+        of the index surrounded by i and j
+      * lower: i  NOTE: might lead to unexpected results for integers (see
+        tests/test_math.test_quantile_interpolation)
+      * higher: j  NOTE: might lead to unexpected results for integers
+      * nearest: i or j whichever is nearest
+      * midpoint: (i + j) / 2. TODO: not yet implemented!
+    - old_style=False (bool, optional): If True, will correct output to be
+      consistent with np.percentile.
+
+    Returns:
+    np.array of shape (M,)"""
+    data = np.array(data)
+    quantiles = np.array(quantiles)
+    if np.any(np.isnan(data)):
+        errmsg = ' '.join([
+            'This function is not tested with missing data! Comment this test',
+            'if you want to use it anyway.'])
+        raise ValueError(errmsg)
+    if data.ndim != 1:
+        errmsg = 'data should have shape (N,) not {}'.format(data.shape)
+        raise ValueError(errmsg)
+    if np.any(quantiles < 0.) or np.any(quantiles > 1.):
+        errmsg = 'quantiles should be in [0, 1] not {}'.format(quantiles)
+        raise ValueError(errmsg)
+    if weights is None:
+        weights = np.ones_like(data)
+    else:
+        weights = np.array(weights)
+        if data.shape != weights.shape:
+            errmsg = ' '.join([
+                'weights need to have the same shape as data ',
+                '({} != {})'.format(weights.shape, data.shape)])
+            raise ValueError(errmsg)
+        # remove values with weights zero
+        idx = np.where(weights == 0)[0]
+        weights = np.delete(weights, idx)
+        data = np.delete(data, idx)
+
+    sorter = np.argsort(data)
+    data = data[sorter]
+    weights = weights[sorter]
+
+    weighted_quantiles = np.cumsum(weights) - .5*weights
+
+    if old_style:  # consistent with np.percentile
+        weighted_quantiles -= weighted_quantiles[0]
+        weighted_quantiles /= weighted_quantiles[-1]
+    else:  # more correct (see reference for a discussion)
+        weighted_quantiles /= np.sum(weights)
+
+    results = np.interp(quantiles, weighted_quantiles, data)
+
+    if interpolation == 'linear':
+        return results
+    elif interpolation == 'lower':
+        if isinstance(results, float):
+            return data[data <= results][-1]
+        return np.array([data[data <= rr][-1] for rr in results])
+    elif interpolation == 'higher':
+        if isinstance(results, float):
+            return data[data >= results][0]
+        return np.array([data[data >= rr][0] for rr in results])
+    elif interpolation == 'nearest':
+        if isinstance(results, float):
+            return data[np.argmin(np.abs(data - results))]
+        return np.array([data[np.argmin(np.abs(data - rr))] for rr in results])
+    elif interpolation == 'midpoint':
+        raise NotImplementedError
+    else:
+        errmsg = ' '.join([
+            'interpolation has to be one of [linear | lower | higher |',
+            'nearest | midpoint] and not {}'.format(interpolation)])
+        raise ValueError(errmsg)
