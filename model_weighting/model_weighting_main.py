@@ -342,6 +342,9 @@ def calc_predictors(filenames, cfg):
             vectorize=True,
         )
 
+        if cfg.predictor_aggs[idx] == 'CYC':
+            diagnostics['rmse_models'] = diagnostics['rmse_models'].mean('month')
+
         diagnostics['perfect_model_ensemble'] = diagnostics['model_ensemble'].data
         logger.debug('Calculate independence matrix... DONE')
 
@@ -405,10 +408,10 @@ def calc_predictors(filenames, cfg):
             #         plot_maps(diff, idx, cfg)
             # ---------------------------------------
 
-            diff = area_weighted_mean(diff**2)
+            diff = np.sqrt(area_weighted_mean(diff**2))
             if cfg.predictor_aggs[idx] == 'CYC':
-                diff = diff.sum('month')
-            diagnostics['rmse_obs'] = np.sqrt(diff)
+                diff = diff.mean('month')
+            diagnostics['rmse_obs'] = diff
             logger.debug('Read observations & calculate model quality... DONE')
 
         logger.debug('Normalize data...')
