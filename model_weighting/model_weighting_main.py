@@ -136,6 +136,11 @@ def test_config(cfg):
         errmsg = 'All model_* variables need to have same length'
         raise ValueError(errmsg)
 
+    try:
+        cfg.subset
+    except AttributeError:
+        cfg.subset = None
+
     return None
 
 
@@ -697,7 +702,8 @@ def main(args):
 
     varns = np.unique([cfg.target_diagnostic] + varns)
     filenames, unique_models = get_filenames(
-        varns, cfg.model_id, cfg.model_scenario, cfg.model_path, cfg.ensembles)
+        varns, cfg.model_id, cfg.model_scenario, cfg.model_path, cfg.ensembles,
+        subset=cfg.subset)
 
     log.start('main().calc_target(fn, cfg)')
     targets, clim = calc_target(filenames[cfg.target_diagnostic], cfg)
