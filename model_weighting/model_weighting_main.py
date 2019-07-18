@@ -26,8 +26,8 @@ Authors
 
 Abstract
 --------
-Main script of the model weighting scheme described by Brunner et al. (in prep.)
-Ruth et al. (2018) and Knutti et al. (2017). If you use this code please note
+Main script of the model weighting scheme described by Brunner et al. (submitted)
+Lorenz et al. (2018) and Knutti et al. (2017). If you use this code please note
 the license and consider citing the papers below.
 
 References

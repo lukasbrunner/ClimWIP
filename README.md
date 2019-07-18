@@ -27,7 +27,7 @@ Knutti, R. at al. (2017): A climate model projection weighting scheme accounting
 Requirements and Installation
 -----------------------------
 
-ClimWIP is written in pure Python and requires at least Python version 3.6. It can be cloned from this GitHub repository using
+ClimWIP is written in Python and requires at least version 3.6. It can be cloned from this GitHub repository using
 
 <code>git clone https://github.com/lukasbrunner/ClimWIP.git</code>
 
@@ -97,8 +97,8 @@ Contributors
 ------------
 
 - Jan Sedlacek
-- Lukas Brunner
-- Ruth Lorenz
+- Lukas Brunner (lukas.brunner@env.ethz.ch)
+- Ruth Lorenz (ruth.lorenz@env.ethz.ch)
 
 Attribution
 -----------
