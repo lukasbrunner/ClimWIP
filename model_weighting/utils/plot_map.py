@@ -210,7 +210,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
         dest='filename', type=str,
-        help='A valid filename as produced by model_weighting_main.py')
+        help='A valid filename as produced by ClimWIP_main.py')
     parser.add_argument(
         '--plot-type', '-t', dest='ext', default='png', type=str,
         help=' '.join([

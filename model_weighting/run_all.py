@@ -38,4 +38,4 @@ for section in config.sections():
         logfile.write('\n{0} {1} {0}\n'.format('-' * 5, section))
         logfile.write('-' * 79)
         logfile.write('\n')
-    os.system(f'nice python model_weighting_main.py {section} -f {args.filename} -log-file logfiles/{logname}')
+    os.system(f'nice python ClimWIP_main.py {section} -f {args.filename} -log-file logfiles/{logname}')

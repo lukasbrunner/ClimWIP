@@ -51,13 +51,13 @@ To permanently add it run
 Setup and Data Paths
 --------------------
 
-ClimWIP makes several assumptions about the folder structure and filename conventions when collection the models to weight. It is developed and tested on the ETH CMIP3/CMIP5/CMIP6 next generation archives which is similar to the ESGF structure, but slightly flatter. Basically the assumed structure is:
+ClimWIP makes several assumptions about the folder structure and filename conventions when collecting the models to weight. It is developed and tested on the ETHZ CMIP3/CMIP5/CMIP6 next generation archives which are similar to the ESGF structure, but slightly flatter. Basically the assumed structure is:
 <code>BASE_PATH/varn/varn_mon_model_scenario_ensemble_g025.nc</code> (CMIP3, 5) or
 <code>BASE_PATH/varn/mon/g025/varn_mon_model_scenario_ensemble_g025.nc</code> (CMIP6).
 
 The filename conventions are constrained to core/get_filenames.py. Depending on the structure on your system it might be necessary to re-write parts of the functions there.
 
-ClimWIP saves all calculated diagnostics to speed up repeated calls using the same diagnostics. The default path for this is <code>./data</code>, in which sub-folders for each variable will be created. The final results will also be save in <code>./data</code> as netCDF4 files. They will be named after the configuration name, existing files will be overwritten.
+ClimWIP saves all calculated diagnostics to speed up repeated calls using the same diagnostics. The default path for this is <code>./data</code>, in which sub-folders for each variable will be created. The final results will also be save in <code>./data</code> as netCDF4 files. They will be named after the configuration name, existing results files will always be overwritten!
 
 
 Usage and Testing
@@ -78,18 +78,18 @@ which is equivalent to running
 
 <code>./ClimWIP_main.py -f configs/config.ini DEFAULT</code>.
 
-To run all configuration within one file run
+To run all sections within a given configuration file run
 
 <code>./run_all.py configs/config.ini</code>
 
-this will also automatically set the logger to log to a file instead of Stdout.
+this will also automatically set the logger to log to a file instead of StdOut.
 
 If the 'plot' field in the configuration is set to True ClimWIP will create simple plots with intermediate results by default in <code>./plots/process_plots</code>.
 
 The results will by default be saved as netCDF4 files in <code>./data</code> and will be named after their respective configuration (note that this means they can be overwritten if different configuration files have configuration with the exact same name!).
 
-If you are using the ETH next generation archives with the standard settings you can run
-<code>./run_all.py configs/config_default.ini</code>
+If you are using the ETHZ next generation archives with the standard settings you can run
+<code>./run_all.py configs/config_test.ini</code>
 to test several simple cases.
 
 
@@ -103,7 +103,7 @@ Contributors
 Attribution
 -----------
 
-If you publish scientific work based on this code please consider citing some of our papers. If you want to acknowledge us consider putting this sentence in the Acknowledgments: "We thank Jan Sedlacek, Lukas Brunner, and Ruth Lorenz (ETH Zurich) for providing the Climate model Weighting by Independence and Performance (ClimWIP) package."
+If you publish scientific work based on this code please consider citing some of our papers. If you want to acknowledge us, we are happy if you put something like this in your acknowledgments: "We thank Jan Sedlacek, Lukas Brunner, and Ruth Lorenz (ETH Zurich) for providing the Climate model Weighting by Independence and Performance (ClimWIP) package."
 
 
 License
