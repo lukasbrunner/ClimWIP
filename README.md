@@ -31,7 +31,7 @@ ClimWIP is written in Python and requires at least version 3.6. It can be cloned
 
 <code>git clone https://github.com/lukasbrunner/ClimWIP.git</code>
 
-To install dependencies change into the newly created directory (by default with <code>cd ClimWIP</code> (and at the moment also <code>git checkout paper</code>)) and run
+To install dependencies change into the newly created directory (by default with <code>cd ClimWIP</code>) and run
 <code>conda env create -f environment.yml</code>
 
 Alternatively, create a new environment and install the required packages manually. This is easiest achieved by running the following:
