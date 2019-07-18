@@ -4,7 +4,9 @@
 """
 Copyright 2019 Lukas Brunner, ETH Zurich
 
-This program is free software: you can redistribute it and/or modify
+This file is part of ClimWIP.
+
+ClimWIP is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
@@ -23,6 +25,9 @@ Authors
 
 Abstract
 --------
+Most file-path and filename dependent functions should be constrained here. If
+you try to run ClimWIP with a different setup then the ETHZ next-generation
+archive, you might need to change things here.
 """
 import os
 import glob
