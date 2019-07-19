@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-07-17 19:03:17 lukbrunn>
+Time-stamp: <2019-07-18 18:31:24 lukbrunn>
 
 (c) 2019 under a MIT License (https://mit-license.org)
 
@@ -22,6 +22,8 @@ import seaborn as sns
 from utils_python.xarray import area_weighted_mean
 from boxplot import boxplot
 
+SAVEPATH = '../../plots/boxplots'
+
 
 def read_input():
     """Read the given configuration from the config file"""
@@ -32,13 +34,16 @@ def read_input():
         dest='filenames', nargs='+', type=str,
         help='')
     parser.add_argument(
-        '--path', '-p', dest='path', type=str,
+        '--path', '-p', dest='path', type=str, default='',
         help='')
     parser.add_argument(
         '--no-unweighted', '-u', dest='unweighted', action='store_false',
         help='')
     parser.add_argument(
         '--title', '-t', dest='title', type=str, default=None,
+        help='')
+    parser.add_argument(
+        '--savename', '-s', dest='savename', type=str, default=None,
         help='')
     args = parser.parse_args()
     return args
@@ -115,7 +120,10 @@ def main():
     if args.title is not None:
         plt.title(args.title)
 
-    plt.show()
+    if args.savename is None:
+        plt.show()
+    else:
+        plt.savefig(os.path.join(SAVEPATH, args.savename), dpi=300)
 
 
 if __name__ == '__main__':
