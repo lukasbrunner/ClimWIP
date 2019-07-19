@@ -7,7 +7,7 @@ Content
 -------
 
 * [Idea and Publications](#idea-and-publications)
-* [Requirements and Installation](#requirements-andinstallation)
+* [Requirements and Installation](#requirements-and-installation)
 * [Setup and Data Paths](#setup-and-data-paths)
 * [Usage and Testing](#usage-and-testing)
 * [Contributors](#contributors)
