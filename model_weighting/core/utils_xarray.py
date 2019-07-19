@@ -234,8 +234,8 @@ def weighted_distance_matrix(data, lat=None):
     weights = np.tile(w_lat, (data.shape[-1], 1)).swapaxes(0, 1).ravel()
     data = data.reshape((data.shape[0], weights.shape[0]))
 
-    # remove nans
-    idx = np.where(np.isfinite(data[0]))[0]
+    # only select grid points which are not nan for all models
+    idx = np.where(np.all(np.isfinite(data), axis=0))[0]
     data = data[:, idx]
     weights = weights[idx]
 
