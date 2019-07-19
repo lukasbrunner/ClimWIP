@@ -6,10 +6,10 @@ A collection of functions to perform Climate model Weighting by Independence and
 Content
 -------
 
-* [Idea and Publications](#idea)
-* [Requirements and Installation](#requirements)
-* [Setup and Data Paths](#setup)
-* [Usage and Testing](#usage)
+* [Idea and Publications](#idea-and-publications)
+* [Requirements and Installation](#requirements-andinstallation)
+* [Setup and Data Paths](#setup-and-data-paths)
+* [Usage and Testing](#usage-and-testing)
 * [Contributors](#contributors)
 * [Attribution](#attribution)
 * [License](#license)
@@ -18,6 +18,7 @@ Content
 Idea and Publications
 ---------------------
 
+Brunner, L. et al. (submitted): Quantifying uncertainty in European climate projections using combined performance-independence weighting. _Eniron. Res. Lett._
 
 Lorenz, R. et al. (2018): Prospects and caveats of weighting climate models for summer maximum temperature projections over North America. _Journal of Geophysical Research: Atmospheres_, 123, 4509–4526. DOI: <a href="http://doi.wiley.com/10.1029/2017JD027992">10.1029/2017JD027992</a>
 
