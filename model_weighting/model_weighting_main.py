@@ -511,10 +511,6 @@ def calc_sigmas(targets, delta_i, unique_models, cfg, n_sigmas=50):
     sigma_i : float
         Optimal shape parameter for independence weighting
     """
-    if cfg.sigma_i is not None and cfg.sigma_q is not None:
-        logger.info('Using user sigmas: q={}, i={}'.format(cfg.sigma_q, cfg.sigma_i))
-        return cfg.sigma_q, cfg.sigma_i
-
     sigma_base = np.nanmean(delta_i)  # an estimated sigma to start
 
     # a large value means all models have equal quality -> we want this as small as possible
@@ -658,6 +654,10 @@ def save_data(ds, targets, clim, filenames, cfg):
     ----------
     ds : xarray.Dataset
         Dataset to save
+    targets : None or xarray.DataArray
+        Target DataArray to add to ds
+    clim : None or xarray.DataArray
+        Target climatology to add to ds
     cfg : configuration object
         See read_config() docstring for more information.
 
@@ -666,8 +666,10 @@ def save_data(ds, targets, clim, filenames, cfg):
     None
     """
     # save additional variables for convenience
-    ds[cfg.target_diagnostic] = targets
-    ds[f'{cfg.target_diagnostic}_clim'] = clim
+    if targets is not None:
+        ds[cfg.target_diagnostic] = targets
+    if clim is not None:
+        ds[f'{cfg.target_diagnostic}_clim'] = clim
     ds['filename'] = xr.DataArray(
         [*filenames[cfg.target_diagnostic].values()],
         coords={'model_ensemble': [*filenames[cfg.target_diagnostic].keys()]},
@@ -705,14 +707,20 @@ def main(args):
         varns, cfg.model_id, cfg.model_scenario, cfg.model_path, cfg.ensembles,
         subset=cfg.subset)
 
-    log.start('main().calc_target(fn, cfg)')
-    targets, clim = calc_target(filenames[cfg.target_diagnostic], cfg)
-
     log.start('main().calc_predictors(fn, cfg)')
     delta_q, delta_i = calc_predictors(filenames, cfg)
 
-    log.start('main().calc_sigmas(targets, delta_i, cfg)')
-    sigma_q, sigma_i = calc_sigmas(targets, delta_i, unique_models, cfg)
+    if cfg.sigma_i is not None and cfg.sigma_q is not None:
+        logger.info('Using user sigmas: q={}, i={}'.format(cfg.sigma_q, cfg.sigma_i))
+        sigma_q = cfg.sigma_q
+        sigma_i = cfg.sigma_i
+        targets = None
+        clim = None
+    else:
+        log.start('main().calc_target(fn, cfg)')
+        targets, clim = calc_target(filenames[cfg.target_diagnostic], cfg)
+        log.start('main().calc_sigmas(targets, delta_i, cfg)')
+        sigma_q, sigma_i = calc_sigmas(targets, delta_i, unique_models, cfg)
 
     log.start('main().calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg)')
     weights = calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg)
