@@ -428,6 +428,8 @@ def calc_predictors(filenames, cfg):
 
         if cfg.performance_normalize is None:
             normalizer = 1.
+        elif cfg.performance_normalize.lower() == 'middle':
+            normalizer = .5*(np.nanmin(normalizer) + np.nanmax(normalizer))
         elif cfg.performance_normalize.lower() == 'median':
             normalizer = np.nanmedian(normalizer)
         elif cfg.performance_normalize.lower() == 'mean':
@@ -702,7 +704,11 @@ def main(args):
         else:
             varns.append(varn)
 
-    varns = np.unique([cfg.target_diagnostic] + varns)
+    if cfg.sigma_i is None or cfg.sigma_q is None:
+        # only if sigmas are None we need to calculate the target
+        varns += [cfg.target_diagnostic]
+
+    varns = np.unique(varns)
     filenames, unique_models = get_filenames(
         varns, cfg.model_id, cfg.model_scenario, cfg.model_path, cfg.ensembles,
         subset=cfg.subset)
