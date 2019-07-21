@@ -200,20 +200,18 @@ def calculate_basic_diagnostic(infile, varn,
         logger.debug('Diagnostic already exists & overwrite=False, skipping.')
         return xr.open_dataset(outfile, use_cftime=True)
 
-    if id_ == 'CMIP6':  # need to concat historical file
+    if id_ == 'CMIP6':  # need to concat historical file and delete 'height'
         scenario = infile.split('_')[-3]
-        assert re.compile('[rcps]{3}[1-9]{3}$').match(scenario), 'not a scenario!'
-        histfile = infile.replace(scenario, 'historical')
-        da_hist = xr.open_dataset(histfile)[varn]
-        da_scen = xr.open_dataset(infile)[varn]
-
+        da = xr.open_dataset(infile)[varn]
+        if scenario != 'historical':
+            assert re.compile('[rcps]{3}[1-9]{3}$').match(scenario), 'not a scenario!'
+            histfile = infile.replace(scenario, 'historical')
+            da_hist = xr.open_dataset(histfile)[varn]
+            da = xr.concat([da_hist, da], dim='time')
         try:
-            da_hist = da_hist.drop('height')
-            da_scen = da_scen.drop('height')
+            da = da.drop('height')
         except ValueError:
             pass
-
-        da = xr.concat([da_hist, da_scen], dim='time')
     else:
         da = xr.open_dataset(infile, use_cftime=True)[varn]
 
