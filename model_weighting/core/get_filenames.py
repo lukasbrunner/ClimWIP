@@ -160,7 +160,7 @@ def get_filenames(varns, ids, scenarios, base_paths, all_members, subset=None):
         filenames = get_unique_filenames(filenames, unique_common_models)
 
     logger.info(f'{len(unique_common_models)} models found')
-    logger.info(f'{len(filenames[varns[0]])} models selected')
+    logger.info(f'{len(filenames[varns[0]])} runs selected')
     logger.info(f', '.join(sorted(unique_models, key=lambda x: x.split('_')[1])))
     logger.debug(', '.join(filenames[varns[0]].keys()))
 

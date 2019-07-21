@@ -639,6 +639,51 @@ def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg):
     ds['sigma_q'] = xr.DataArray([sigma_q])
     ds['sigma_i'] = xr.DataArray([sigma_i])
 
+    # add some metadata
+    ds['model_ensemble'].attrs = {
+        'units': '1',
+        'long_name': 'Unique Model Identifier',
+        'description': ' '.join([
+            'Underscore-separated model identifyer:',
+            'model_ensemble_project']),
+    }
+    ds['perfect_model_ensemble'].attrs = {
+        'units': '1',
+        'long_name': 'Unique Perfect Model Identifier',
+        'description': ' '.join([
+            'Underscore-separated perfect model (c.f. perfect model test) identifyer:',
+            'model_ensemble_project'])
+    }
+    ds['weights'].attrs = {
+        'units': '1',
+        'long_name': 'Normalized Model Weights',
+    }
+    ds['weights_q'].attrs = {
+        'units': '1',
+        'long_name': 'Quality Weights (not Normalized)',
+    }
+    ds['weights_i'].attrs = {
+        'units': '1',
+        'long_name': 'Independence Weights (not Normalized)',
+        'description': 'Higher values mean more dependence!',
+    }
+    ds['delta_q'].attrs = {
+        'units': '1',
+        'long_name': 'Observational Distance Metric',
+    }
+    ds['delta_i'].attrs = {
+        'units': '1',
+        'long_name': 'Model Distance Metric',
+    }
+    ds['sigma_q'].attrs = {
+        'units': '1',
+        'long_name': 'Observational Distance Shape Parameter',
+    }
+    ds['sigma_i'].attrs = {
+        'units': '1',
+        'long_name': 'Model Distance Shape Parameter',
+    }
+
     ds.attrs['target'] = cfg.target_diagnostic
     ds.attrs['region'] = cfg.target_region
 
@@ -675,10 +720,21 @@ def save_data(ds, targets, clim, filenames, cfg):
     ds['filename'] = xr.DataArray(
         [*filenames[cfg.target_diagnostic].values()],
         coords={'model_ensemble': [*filenames[cfg.target_diagnostic].keys()]},
-        dims='model_ensemble')
+        dims='model_ensemble',
+        attrs={
+            'units': '1',
+            'long_name': 'Full Path and Filename',
+        })
 
     # add some metadata
-    ds.attrs.update({'config': cfg.config, 'config_path': cfg.config_path})
+    ds.attrs.update({
+        'config': cfg.config,
+        'config_path': cfg.config_path,
+        'reference': ' '.join([
+            'Brunner et al. (submitted): Quantifying uncertainty in European',
+            'climate projections using combined performance-independence',
+            'weighting. Eniron. Res. Lett.']),
+    })
     add_revision(ds)
 
     filename = os.path.join(cfg.save_path, f'{cfg.config}.nc')
