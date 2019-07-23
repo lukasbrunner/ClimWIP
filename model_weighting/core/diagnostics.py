@@ -275,7 +275,7 @@ def calculate_basic_diagnostic(infile, varn,
         da = da.isel(lat=idx_lats, lon=idx_lons)
         if np.all(np.isnan(da.isel(time=0))):
             # end program if only nan (i.e., ocean with mask)
-            sys.exit('(idx_lats, idx_lons) contains only nan')
+            sys.exit(f'{idx_lats, idx_lons} contains only nan')
 
     da = standardize_units(da, varn)
     attrs = da.attrs

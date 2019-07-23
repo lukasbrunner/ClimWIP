@@ -126,6 +126,12 @@ def test_config(cfg):
         cfg.idx_lats = None
         cfg.idx_lons = None
 
+    if cfg.target_diagnostic is None and not (
+            cfg.sigma_q is None and cfg.sigma_i is None):
+        errmsg = 'If target_diagnostic is None, both sigmas need to be set!'
+        logger.error(errmsg)
+        raise ValueError(errmsg)
+
     if isinstance(cfg.model_path, str):
         cfg.model_path = [cfg.model_path]
     if isinstance(cfg.model_id, str):
@@ -513,6 +519,10 @@ def calc_sigmas(targets, delta_i, unique_models, cfg, n_sigmas=50):
     sigma_i : float
         Optimal shape parameter for independence weighting
     """
+    if cfg.sigma_i is not None and cfg.sigma_q is not None:
+        logger.info('Using user sigmas: q={}, i={}'.format(cfg.sigma_q, cfg.sigma_i))
+        return cfg.sigma_q, cfg.sigma_i
+
     sigma_base = np.nanmean(delta_i)  # an estimated sigma to start
 
     # a large value means all models have equal quality -> we want this as small as possible
@@ -760,7 +770,7 @@ def main(args):
         else:
             varns.append(varn)
 
-    if cfg.sigma_i is None or cfg.sigma_q is None:
+    if cfg.target_diagnostic is not None:
         # only if sigmas are None we need to calculate the target
         varns += [cfg.target_diagnostic]
 
@@ -772,7 +782,7 @@ def main(args):
     log.start('main().calc_predictors(fn, cfg)')
     delta_q, delta_i = calc_predictors(filenames, cfg)
 
-    if cfg.sigma_i is not None and cfg.sigma_q is not None:
+    if cfg.target_diagnostic is None:
         logger.info('Using user sigmas: q={}, i={}'.format(cfg.sigma_q, cfg.sigma_i))
         sigma_q = cfg.sigma_q
         sigma_i = cfg.sigma_i
