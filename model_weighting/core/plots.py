@@ -88,7 +88,8 @@ def plot_rmse(da, idx, cfg, da2=None):
     ax.set_xticklabels(xx)
     plt.xticks(rotation=90)
     ax.set_yticklabels(yy)
-    ax.set_title(title, fontsize='xx-large', pad=70)
+    ax.set_ylim(len(yy)-.5, -.5)
+    ax.set_title(title, fontsize='xx-large', pad=100)
 
     fig.colorbar(im, ax=ax, fraction=.046, pad=.04)
 
