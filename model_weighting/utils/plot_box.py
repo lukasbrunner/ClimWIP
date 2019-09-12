@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-07-18 18:31:24 lukbrunn>
+Time-stamp: <2019-09-12 09:55:13 lukbrunn>
 
 (c) 2019 under a MIT License (https://mit-license.org)
 
@@ -66,12 +66,17 @@ def main():
     fig, ax = plt.subplots()
     fig.subplots_adjust(left=.1, right=.99, bottom=.22, top=.91)
 
+    xticks = []
     xticklabels = []
 
     for xx, filename in enumerate(args.filenames):
+        if filename == '':
+            continue
+
         ds = read_data(filename, args.path)
 
         varn = ds.attrs['target']
+        xticks.append(xx)
         xticklabels.append(ds.attrs['config'])
 
         if args.unweighted:
@@ -104,7 +109,7 @@ def main():
             # whis_kwargs={'caps_width': .6},
         )
 
-    ax.set_xticks(range(len(args.filenames)))
+    ax.set_xticks(xticks)
     ax.set_xticklabels(xticklabels, rotation=30, ha='right')
 
     try:
