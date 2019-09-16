@@ -208,12 +208,13 @@ def calculate_basic_diagnostic(infile, varn,
             histfile = infile.replace(scenario, 'historical')
             da_hist = xr.open_dataset(histfile)[varn]
             da = xr.concat([da_hist, da], dim='time')
-        try:
-            da = da.drop('height')
-        except ValueError:
-            pass
     else:
         da = xr.open_dataset(infile, use_cftime=True)[varn]
+
+    try:
+        da = da.drop('height')
+    except ValueError:
+        pass
 
     da = flip_antimeridian(da)
     assert np.all(da['lat'].data == np.arange(-88.75, 90., 2.5))
