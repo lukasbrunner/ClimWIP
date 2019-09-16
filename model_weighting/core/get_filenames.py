@@ -51,6 +51,8 @@ def get_filenames_var(varn, id_, scenario, base_path):
         filename_pattern = f'{varn}/{varn}_mon_*_{scenario}_*_g025.nc'
     elif id_ == 'CMIP3':
         filename_pattern = f'{varn}/{varn}_mon_*_{scenario}_*_g025.nc'
+    elif id_ == 'LE':
+        filename_pattern = f'{varn}_mon_*_{scenario}_*_g025.nc'
     else:
         raise ValueError(f'{id_} is not a valid model_id')
     fullpath = os.path.join(base_path, filename_pattern)
