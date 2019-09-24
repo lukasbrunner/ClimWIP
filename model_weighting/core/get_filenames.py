@@ -43,6 +43,22 @@ def get_model_from_filename(filename, id_):
     return f'{parts[2]}_{parts[4]}_{id_}'
 
 
+def cmip6_test_hist(filenames, scenario):
+    """For CMIP6 we currently need to check if the historical file for a given
+    scenario already exists as it is needed for merging in 'diagnostics.py'"""
+    if scenario == 'historical':  # no need to check if scenario is historical
+        return filenames
+
+    del_files = []
+    for filename in filenames:
+        histfile = filename.replace(scenario, 'historical')
+        if not os.path.isfile(histfile):
+            del_files.append(filename)
+    for del_file in del_files:
+        filenames.remove(del_file)
+    return filenames
+
+
 def get_filenames_var(varn, id_, scenario, base_path):
     """Get all filenames matching the set criteria."""
     if id_ == 'CMIP6':
@@ -57,6 +73,10 @@ def get_filenames_var(varn, id_, scenario, base_path):
         raise ValueError(f'{id_} is not a valid model_id')
     fullpath = os.path.join(base_path, filename_pattern)
     filenames = glob.glob(fullpath)
+
+    if id_ == 'CMIP6':
+        filenames = cmip6_test_hist(filenames, scenario)
+
     assert len(filenames) != 0, f'no models found for {varn}, {id_}, {scenario}'
     return {get_model_from_filename(fn, id_): fn for fn in filenames}
 
