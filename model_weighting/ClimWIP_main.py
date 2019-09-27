@@ -126,6 +126,12 @@ def test_config(cfg):
         cfg.idx_lats = None
         cfg.idx_lons = None
 
+    if cfg.target_diagnostic is None and not (
+            cfg.sigma_q is None and cfg.sigma_i is None):
+        errmsg = 'If target_diagnostic is None, both sigmas need to be set!'
+        logger.error(errmsg)
+        raise ValueError(errmsg)
+
     if isinstance(cfg.model_path, str):
         cfg.model_path = [cfg.model_path]
     if isinstance(cfg.model_id, str):
@@ -135,6 +141,11 @@ def test_config(cfg):
     if len({len(cfg[key]) for key in cfg.keys() if 'model_' in key}) != 1:
         errmsg = 'All model_* variables need to have same length'
         raise ValueError(errmsg)
+
+    try:
+        cfg.subset
+    except AttributeError:
+        cfg.subset = None
 
     return None
 
@@ -392,9 +403,9 @@ def calc_predictors(filenames, cfg):
             elif cfg.obs_uncertainty == 'center':
                 diff = diagnostics[diagn_key] - .5*(obs_min[diagn_key] + obs_max[diagn_key])
             elif cfg.obs_uncertainty == 'mean':
-                diff = diagnostics[diagn_key] - obs.mean('dataset_dim')[diagn_key]
+                diff = diagnostics[diagn_key] - obs.mean('dataset_dim', skipna=False)[diagn_key]
             elif cfg.obs_uncertainty == 'median':
-                diff = diagnostics[diagn_key] - obs.median('dataset_dim')[diagn_key]
+                diff = diagnostics[diagn_key] - obs.median('dataset_dim', skipna=False)[diagn_key]
             elif cfg.obs_uncertainty is None:
                 # obs_min and obs_max are the same for this case
                 diff = diagnostics[diagn_key] - obs_min[diagn_key]
@@ -423,6 +434,8 @@ def calc_predictors(filenames, cfg):
 
         if cfg.performance_normalize is None:
             normalizer = 1.
+        elif cfg.performance_normalize.lower() == 'middle':
+            normalizer = .5*(np.nanmin(normalizer) + np.nanmax(normalizer))
         elif cfg.performance_normalize.lower() == 'median':
             normalizer = np.nanmedian(normalizer)
         elif cfg.performance_normalize.lower() == 'mean':
@@ -636,6 +649,51 @@ def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg):
     ds['sigma_q'] = xr.DataArray([sigma_q])
     ds['sigma_i'] = xr.DataArray([sigma_i])
 
+    # add some metadata
+    ds['model_ensemble'].attrs = {
+        'units': '1',
+        'long_name': 'Unique Model Identifier',
+        'description': ' '.join([
+            'Underscore-separated model identifyer:',
+            'model_ensemble_project']),
+    }
+    ds['perfect_model_ensemble'].attrs = {
+        'units': '1',
+        'long_name': 'Unique Perfect Model Identifier',
+        'description': ' '.join([
+            'Underscore-separated perfect model (c.f. perfect model test) identifyer:',
+            'model_ensemble_project'])
+    }
+    ds['weights'].attrs = {
+        'units': '1',
+        'long_name': 'Normalized Model Weights',
+    }
+    ds['weights_q'].attrs = {
+        'units': '1',
+        'long_name': 'Quality Weights (not Normalized)',
+    }
+    ds['weights_i'].attrs = {
+        'units': '1',
+        'long_name': 'Independence Weights (not Normalized)',
+        'description': 'Higher values mean more dependence!',
+    }
+    ds['delta_q'].attrs = {
+        'units': '1',
+        'long_name': 'Observational Distance Metric',
+    }
+    ds['delta_i'].attrs = {
+        'units': '1',
+        'long_name': 'Model Distance Metric',
+    }
+    ds['sigma_q'].attrs = {
+        'units': '1',
+        'long_name': 'Observational Distance Shape Parameter',
+    }
+    ds['sigma_i'].attrs = {
+        'units': '1',
+        'long_name': 'Model Distance Shape Parameter',
+    }
+
     ds.attrs['target'] = cfg.target_diagnostic
     ds.attrs['region'] = cfg.target_region
 
@@ -653,6 +711,10 @@ def save_data(ds, targets, clim, filenames, cfg):
     ----------
     ds : xarray.Dataset
         Dataset to save
+    targets : None or xarray.DataArray
+        Target DataArray to add to ds
+    clim : None or xarray.DataArray
+        Target climatology to add to ds
     cfg : configuration object
         See read_config() docstring for more information.
 
@@ -661,15 +723,28 @@ def save_data(ds, targets, clim, filenames, cfg):
     None
     """
     # save additional variables for convenience
-    ds[cfg.target_diagnostic] = targets
-    ds[f'{cfg.target_diagnostic}_clim'] = clim
+    if targets is not None:
+        ds[cfg.target_diagnostic] = targets
+    if clim is not None:
+        ds[f'{cfg.target_diagnostic}_clim'] = clim
     ds['filename'] = xr.DataArray(
         [*filenames[cfg.target_diagnostic].values()],
         coords={'model_ensemble': [*filenames[cfg.target_diagnostic].keys()]},
-        dims='model_ensemble')
+        dims='model_ensemble',
+        attrs={
+            'units': '1',
+            'long_name': 'Full Path and Filename',
+        })
 
     # add some metadata
-    ds.attrs.update({'config': cfg.config, 'config_path': cfg.config_path})
+    ds.attrs.update({
+        'config': cfg.config,
+        'config_path': cfg.config_path,
+        'reference': ' '.join([
+            'Brunner et al. (submitted): Quantifying uncertainty in European',
+            'climate projections using combined performance-independence',
+            'weighting. Eniron. Res. Lett.']),
+    })
     add_revision(ds)
 
     filename = os.path.join(cfg.save_path, f'{cfg.config}.nc')
@@ -695,18 +770,29 @@ def main(args):
         else:
             varns.append(varn)
 
-    varns = np.unique([cfg.target_diagnostic] + varns)
-    filenames, unique_models = get_filenames(
-        varns, cfg.model_id, cfg.model_scenario, cfg.model_path, cfg.ensembles)
+    if cfg.target_diagnostic is not None:
+        # only if sigmas are None we need to calculate the target
+        varns += [cfg.target_diagnostic]
 
-    log.start('main().calc_target(fn, cfg)')
-    targets, clim = calc_target(filenames[cfg.target_diagnostic], cfg)
+    varns = np.unique(varns)
+    filenames, unique_models = get_filenames(
+        varns, cfg.model_id, cfg.model_scenario, cfg.model_path, cfg.ensembles,
+        subset=cfg.subset)
 
     log.start('main().calc_predictors(fn, cfg)')
     delta_q, delta_i = calc_predictors(filenames, cfg)
 
-    log.start('main().calc_sigmas(targets, delta_i, cfg)')
-    sigma_q, sigma_i = calc_sigmas(targets, delta_i, unique_models, cfg)
+    if cfg.target_diagnostic is None:
+        logger.info('Using user sigmas: q={}, i={}'.format(cfg.sigma_q, cfg.sigma_i))
+        sigma_q = cfg.sigma_q
+        sigma_i = cfg.sigma_i
+        targets = None
+        clim = None
+    else:
+        log.start('main().calc_target(fn, cfg)')
+        targets, clim = calc_target(filenames[cfg.target_diagnostic], cfg)
+        log.start('main().calc_sigmas(targets, delta_i, cfg)')
+        sigma_q, sigma_i = calc_sigmas(targets, delta_i, unique_models, cfg)
 
     log.start('main().calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg)')
     weights = calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg)

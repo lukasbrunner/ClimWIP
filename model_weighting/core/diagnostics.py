@@ -200,22 +200,21 @@ def calculate_basic_diagnostic(infile, varn,
         logger.debug('Diagnostic already exists & overwrite=False, skipping.')
         return xr.open_dataset(outfile, use_cftime=True)
 
-    if id_ == 'CMIP6':  # need to concat historical file
+    if id_ == 'CMIP6':  # need to concat historical file and delete 'height'
         scenario = infile.split('_')[-3]
-        assert re.compile('[rcps]{3}[1-9]{3}$').match(scenario), 'not a scenario!'
-        histfile = infile.replace(scenario, 'historical')
-        da_hist = xr.open_dataset(histfile)[varn]
-        da_scen = xr.open_dataset(infile)[varn]
-
-        try:
-            da_hist = da_hist.drop('height')
-            da_scen = da_scen.drop('height')
-        except ValueError:
-            pass
-
-        da = xr.concat([da_hist, da_scen], dim='time')
+        da = xr.open_dataset(infile)[varn]
+        if scenario != 'historical':
+            assert re.compile('[rcps]{3}[1-9]{3}$').match(scenario), 'not a scenario!'
+            histfile = infile.replace(scenario, 'historical')
+            da_hist = xr.open_dataset(histfile)[varn]
+            da = xr.concat([da_hist, da], dim='time')
     else:
         da = xr.open_dataset(infile, use_cftime=True)[varn]
+
+    try:
+        da = da.drop('height')
+    except ValueError:
+        pass
 
     da = flip_antimeridian(da)
     assert np.all(da['lat'].data == np.arange(-88.75, 90., 2.5))
@@ -277,7 +276,7 @@ def calculate_basic_diagnostic(infile, varn,
         da = da.isel(lat=idx_lats, lon=idx_lons)
         if np.all(np.isnan(da.isel(time=0))):
             # end program if only nan (i.e., ocean with mask)
-            sys.exit('(idx_lats, idx_lons) contains only nan')
+            sys.exit(f'{idx_lats, idx_lons} contains only nan')
 
     da = standardize_units(da, varn)
     attrs = da.attrs
