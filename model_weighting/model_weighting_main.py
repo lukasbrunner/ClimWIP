@@ -403,9 +403,9 @@ def calc_predictors(filenames, cfg):
             elif cfg.obs_uncertainty == 'center':
                 diff = diagnostics[diagn_key] - .5*(obs_min[diagn_key] + obs_max[diagn_key])
             elif cfg.obs_uncertainty == 'mean':
-                diff = diagnostics[diagn_key] - obs.mean('dataset_dim')[diagn_key]
+                diff = diagnostics[diagn_key] - obs.mean('dataset_dim', skipna=False)[diagn_key]
             elif cfg.obs_uncertainty == 'median':
-                diff = diagnostics[diagn_key] - obs.median('dataset_dim')[diagn_key]
+                diff = diagnostics[diagn_key] - obs.median('dataset_dim', skipna=False)[diagn_key]
             elif cfg.obs_uncertainty is None:
                 # obs_min and obs_max are the same for this case
                 diff = diagnostics[diagn_key] - obs_min[diagn_key]
