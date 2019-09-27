@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-09-12 09:55:13 lukbrunn>
+Time-stamp: <2019-09-27 17:11:14 lukbrunn>
 
 (c) 2019 under a MIT License (https://mit-license.org)
 
@@ -22,7 +22,7 @@ import seaborn as sns
 from utils_python.xarray import area_weighted_mean
 from boxplot import boxplot
 
-SAVEPATH = '../../plots/boxplots'
+SAVEPATH = os.path.dirname(os.path.abspath(__file__)) + '/../../plots/boxplots'
 
 
 def read_input():

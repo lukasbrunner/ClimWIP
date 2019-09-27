@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-07-16 09:41:21 lukbrunn>
+Time-stamp: <2019-09-27 17:11:34 lukbrunn>
 
 (c) 2019 under a MIT License (https://mit-license.org)
 
@@ -32,7 +32,7 @@ period_ref = slice('1995', '2014')
 # TODO: add this to parser
 perfect_model_ensemble = 'ACCESS1-3_r1i1p1_CMIP5'
 
-PLOTPATH = '../../plots/timeseries/'
+PLOTPATH = os.path.dirname(os.path.abspath(__file__)) + '/../../plots/timeseries/'
 
 
 def read_input():
