@@ -26,7 +26,7 @@ Authors
 
 Abstract
 --------
-Main script of the model weighting scheme described by Brunner et al. (submitted)
+Main script of the model weighting scheme described by Brunner et al. (2019)
 Lorenz et al. (2018) and Knutti et al. (2017). If you use this code please note
 the license and consider citing the papers below.
 
@@ -41,6 +41,10 @@ Lorenz, R., Herger, N., Sedláček, J., Eyring, V., Fischer, E. M., and
 Knutti, R. (2018). Prospects and caveats of weighting climate models for
 summer maximum temperature projections over North America. Journal of
 Geophysical Research: Atmospheres, 123, 4509–4526. doi:10.1029/2017JD027992.
+
+Brunner, L., R. Lorenz, M. Zumwald, R. Knutti (accepted): Quantifying uncertainty
+in European climate projections using combined performance-independence weighting.
+Eniron. Res. Lett., https://doi.org/10.1088/1748-9326/ab492f
 """
 import os
 import logging
@@ -547,6 +551,8 @@ def calc_sigmas(targets, delta_i, unique_models, cfg, n_sigmas=50):
     if cfg.ensemble_independence:
         sigmas_i = independence_sigma(delta_i, sigmas_i)
         idx_i_min = 0
+    else:
+        idx_i_min = None
 
     weights_sigmas = calculate_weights_sigmas(delta_i_1ens, sigmas_q, sigmas_i)
 
@@ -574,7 +580,7 @@ def calc_sigmas(targets, delta_i, unique_models, cfg, n_sigmas=50):
             raise ValueError(logmsg)
 
     if cfg.ensemble_independence:
-        idx_q_min = np.argmin(1-inside_ok[:, 0])
+        idx_q_min = np.argmin(1-inside_ok[:, idx_i_min])
     else:
         # find the element with the smallest sum i+j which is True
         index_sum = 9999
@@ -741,9 +747,10 @@ def save_data(ds, targets, clim, filenames, cfg):
         'config': cfg.config,
         'config_path': cfg.config_path,
         'reference': ' '.join([
-            'Brunner et al. (submitted): Quantifying uncertainty in European',
+            'Brunner et al. (2019): Quantifying uncertainty in European',
             'climate projections using combined performance-independence',
-            'weighting. Eniron. Res. Lett.']),
+            'weighting. Eniron. Res. Lett.',
+            'https://doi.org/10.1088/1748-9326/ab492f.']),
     })
     add_revision(ds)
 
