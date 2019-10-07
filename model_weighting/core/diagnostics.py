@@ -202,11 +202,11 @@ def calculate_basic_diagnostic(infile, varn,
 
     if id_ == 'CMIP6':  # need to concat historical file and delete 'height'
         scenario = infile.split('_')[-3]
-        da = xr.open_dataset(infile)[varn]
+        da = xr.open_dataset(infile, use_cftime=True)[varn]
         if scenario != 'historical':
             assert re.compile('[rcps]{3}[1-9]{3}$').match(scenario), 'not a scenario!'
             histfile = infile.replace(scenario, 'historical')
-            da_hist = xr.open_dataset(histfile)[varn]
+            da_hist = xr.open_dataset(histfile, use_cftime=True)[varn]
             da = xr.concat([da_hist, da], dim='time')
     else:
         da = xr.open_dataset(infile, use_cftime=True)[varn]
