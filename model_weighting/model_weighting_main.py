@@ -673,6 +673,7 @@ def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg):
     ds['weights'].attrs = {
         'units': '1',
         'long_name': 'Normalized Model Weights',
+        'description': '(weights_q/weights_i) / sum(weights_q/weights_i)'
     }
     ds['weights_q'].attrs = {
         'units': '1',
