@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-09-27 17:11:34 lukbrunn>
+Time-stamp: <2019-10-09 09:29:10 lukbrunn>
 
 (c) 2019 under a MIT License (https://mit-license.org)
 
@@ -18,21 +18,21 @@ import warnings
 import numpy as np
 import xarray as xr
 import matplotlib as mpl
-mpl.use('Agg')
+import regionmask
+#mpl.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
+from properscoring import crps_ensemble
 
 from model_weighting.core.utils import read_config, log_parser
-from model_weighting.core.utils_xarray import area_weighted_mean, quantile
-from model_weighting.core.diagnostics import calculate_basic_diagnostic
+from model_weighting.core.utils_xarray import area_weighted_mean, quantile, flip_antimeridian
+
+warnings.filterwarnings('ignore')
 
 quantile = np.vectorize(quantile, signature='(n)->()', excluded=[1, 'weights', 'interpolation', 'old_style'])
 period_ref = slice('1995', '2014')
 
-# TODO: add this to parser
-perfect_model_ensemble = 'ACCESS1-3_r1i1p1_CMIP5'
-
-PLOTPATH = os.path.dirname(os.path.abspath(__file__)) + '/../../plots/timeseries/'
+PLOTPATH = '../../plots/timeseries/'
 
 
 def read_input():
@@ -41,11 +41,8 @@ def read_input():
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
-        dest='config', nargs='?', default='med_tas_81-00',
-        help='Name of the configuration to use (optional; default: med_tas_81-00).')
-    parser.add_argument(
-        '--filename', '-f', dest='filename', default='../configs/paper/tas.ini',
-        help='Relative or absolute path/filename.ini of the config file.')
+        dest='filename', type=str,
+        help='Valid weights file (should end with .nc)')
     parser.add_argument(
         '--plot-type', '-t', dest='ext', default='png', type=str,
         help=' '.join([
@@ -54,61 +51,55 @@ def read_input():
     parser.add_argument(
         '--change-false', dest='change', action='store_false',
         help='Plot change instead of absolute values')
+    parser.add_argument(
+        '--perfect-model', '-p', dest='perfect_model_ensemble', type=str,
+        default='ACCESS1-3_r1i1p1_CMIP5',
+        help='String indicating the perfect model')
     args = parser.parse_args()
-    cfg = read_config(args.config, args.filename)
-    log_parser(cfg)
-    return cfg, args
+
+    return args
 
 
-def read_models(filenames, mask, change, cfg):
-    varn = cfg.target_diagnostic
+def read_models(ds, nan_mask, cfg, change):
+    filenames = ds['filename'].data
+    model_ensemble = ds['model_ensemble'].data
+
     ds_list = []
-    i = 0
-    for filename, model_ensemble in zip(
-            filenames.data, filenames.model_ensemble.data):
+    for filename, model_ensemble in zip(filenames, model_ensemble):
 
-        ds = calculate_basic_diagnostic(
-            filename,
-            varn,
-            outfile=None,
-            id_=cfg.model_id,
-            time_period=None,
-            season=cfg.target_season,
-            time_aggregation=None,
-            mask_ocean=cfg.target_masko,
-            region=cfg.target_region)
+        ds_var = xr.open_dataset(filename, use_cftime=True)
+        scenario = filename.split('_')[-3]
+        if 'ssp' in scenario:  # for cmip6 need to concat historical files
+            filename = filename.replace(scenario, 'historical')
+            ds_var2 = xr.open_dataset(filename, use_cftime=True)
+            ds_var = xr.concat([ds_var2, ds_var], dim='time')
 
-        if mask is not None:
-            ds[cfg.target_diagnostic] = xr.apply_ufunc(
-                apply_obs_mask, ds[cfg.target_diagnostic], mask,
-                input_core_dims=[['lat', 'lon'], ['lat', 'lon']],
-                output_core_dims=[['lat', 'lon']],
-                vectorize=True)
+        ds_var = ds_var.drop(['height', 'file_qf'], errors='ignore')
 
-        # xarray spams warnings about the masked vales
-        with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', message='Mean of empty slice')
-            ds = ds.resample(time='1A').mean()
-        ds = area_weighted_mean(ds)
-        ds = ds.sel(time=slice('1950', None))
+        ds_var = ds_var.isel(time=ds_var['time.season'] == cfg.target_season)
+        ds_var = ds_var.sel(time=slice('1950', '2100'))
+        ds_var = ds_var.groupby('time.year').mean('time')
+
+        ds_var = flip_antimeridian(ds_var)
+        ds_var = ds_var.where(~nan_mask, drop=True)  # convert mask to index!
+
+        ds_var = area_weighted_mean(ds_var)
+
         if change:
-            ds[varn] -= ds[varn].sel(time=slice(
+            ds_var -= ds_var.sel(year=slice(
                 str(cfg.target_startyear_ref),
-                str(cfg.target_endyear_ref))).mean('time')
-        ds['model_ensemble'] = xr.DataArray([model_ensemble], dims='model_ensemble')
-        ds['time'].data = ds['time'].dt.year.data
-        ds_list.append(ds)
-        i += 1
+                str(cfg.target_endyear_ref))).mean('year')
+        elif ds_var.max() > 100:  # assume Kelvin
+            ds_var -= 273.15
+            ds_var.attrs['unit'] = 'degC'
+
+        ds_var['model_ensemble'] = xr.DataArray([model_ensemble], dims='model_ensemble')
+        ds_list.append(ds_var)
+
     return xr.concat(ds_list, dim='model_ensemble')
 
 
-def apply_obs_mask(data, mask):
-    data = np.ma.masked_array(data, mask)  # mask data
-    data = np.ma.filled(data, fill_value=np.nan)  # set masked to NaN
-    return data
-
-
-def read_obs(cfg, change):
+def read_obs(ds, cfg, change):
 
     if cfg.obs_id is None:
         return None, None
@@ -117,189 +108,155 @@ def read_obs(cfg, change):
         cfg.obs_id = [cfg.obs_id]
         cfg.obs_path = [cfg.obs_path]
 
-    varn = cfg.target_diagnostic
     ds_list = []
-    mask = False
     for obs_path, obs_id in zip(cfg.obs_path, cfg.obs_id):
-        filename = os.path.join(obs_path, '{}_mon_{}_g025.nc'.format(varn, obs_id))
 
-        ds = calculate_basic_diagnostic(
-            filename,
-            varn,
-            outfile=None,
-            id_=obs_id,
-            time_period=None,
-            season=cfg.target_season,
-            time_aggregation=None,
-            mask_ocean=cfg.target_masko,
-            region=cfg.target_region)
+        filename = os.path.join(obs_path, '{}_mon_{}_g025.nc'.format(cfg.target_diagnostic, obs_id))
+        ds_var = xr.open_dataset(filename, use_cftime=True)[cfg.target_diagnostic]
 
-        with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', message='Mean of empty slice')
-            ds = ds.resample(time='1A').mean()
+        if obs_id in ['CESM2', 'CESM2-2', 'CESM2-3']:
+            filename = os.path.join(obs_path, '{}_mon_{}_g025_future.nc'.format(cfg.target_diagnostic, obs_id))
+            ds_var2 = xr.open_dataset(filename, use_cftime=True)[cfg.target_diagnostic]
 
-        mask = np.ma.mask_or(mask, np.isnan(ds.mean('time', skipna=False)[cfg.target_diagnostic]))
-        if change:
-            ds[varn] -= ds[varn].sel(time=slice(
-                str(cfg.target_startyear_ref),
-                str(cfg.target_endyear_ref))).mean('time')
-        ds['time'].data = ds['time'].dt.year.data
-        ds_list.append(ds)
-    ds = xr.concat(ds_list, dim='dataset')
+            ds_var = xr.concat([ds_var, ds_var2], dim='time')
 
-    # before taking the area mean set all grid points to NaN which are NaN in
-    # ANY of the observational datasets
-    ds[cfg.target_diagnostic] = xr.apply_ufunc(
-        apply_obs_mask, ds[cfg.target_diagnostic], mask,
-        input_core_dims=[['lat', 'lon'], ['lat', 'lon']],
-        output_core_dims=[['lat', 'lon']],
-        vectorize=True)
+        ds_var = ds_var.isel(time=ds_var['time.season'] == cfg.target_season)
+        ds_var = ds_var.sel(time=slice('1980', '2014'))
+        ds_var = ds_var.groupby('time.year').mean('time')
 
-    # ds[cfg.target_diagnostic].data = ds[cfg.target_diagnostic].data > 0.05
-    return area_weighted_mean(ds), mask
+        ds_var = flip_antimeridian(ds_var)
+        ds_var = ds_var.sel(lon=ds['lon'], lat=ds['lat'])
 
+        if ds_var.max() > 100:  # assume Kelvin
+            ds_var -= 273.15
+            ds_var.attrs['unit'] = 'degC'
 
-def read_weights(model_ensemble, cfg):
-    filename = os.path.join(cfg.save_path, cfg.config + '.nc')
-    ds = xr.open_dataset(filename)
-    ds = ds.sel(model_ensemble=model_ensemble)
-    return ds['weights']
+        ds_list.append(ds_var)
+
+    ds_var = xr.concat(ds_list, dim='dataset')
+
+    sea_mask = regionmask.defined_regions.natural_earth.land_110.mask(ds_var, wrap_lon=180) == 0
+    ds_var = ds_var.where(sea_mask)
+
+    nan_mask = np.isnan(ds_var.mean('year', skipna=False).mean('dataset', skipna=False))
+    ds_var = ds_var.where(~nan_mask)
+
+    ds_var = area_weighted_mean(ds_var)
+
+    if change:
+        ds_var -= ds_var.sel(year=slice(
+            cfg.target_startyear_ref,
+            cfg.target_endyear_ref)).mean('year')
+
+    return ds_var, nan_mask
 
 
-def plot(ds_models, ds_obs, weights, args, cfg):
+def plot(ds_models, ds_obs, weights, args, ds):
+
     fig, ax = plt.subplots(figsize=(7, 4))
     fig.subplots_adjust(left=.08, right=.97, top=.99)
+
+    def plot_shading(yy1, yy2, xx=ds_models['year'].data, color='gray', alpha=.3, **kwargs):
+        return ax.fill_between(
+            xx, yy1, yy2,
+            facecolor=color,
+            edgecolor='none',
+            alpha=alpha,
+            zorder=100,
+            **kwargs)
+
+    def plot_line(yy, xx=ds_models['year'].data, color='gray', lw=2, **kwargs):
+        return ax.plot(
+            xx, yy,
+            color=color,
+            lw=lw,
+            zorder=1000,
+            **kwargs)[0]
 
     handles = []
     labels = []
 
-    # --- unweighted baseline ---
-    l1a = ax.fill_between(
-        ds_models['time'].data,
+    # --- baseline ---
+    h1 = plot_shading(
         quantile(ds_models.data.swapaxes(0, 1), .25),
-        quantile(ds_models.data.swapaxes(0, 1), .75),
-        facecolor='gray',
-        edgecolor='none',
-        alpha=.5,
-        zorder=100,
-    )
-    # plot mean
-    [l1b] = ax.plot(
-        ds_models['time'].data,
-        np.mean(ds_models.data, axis=0),
-        color='gray',
-        lw=2,
-        zorder=1000,
-    )
-    handles.append((l1a, l1b))
+        quantile(ds_models.data.swapaxes(0, 1), .75))
+    h2 = plot_line(np.mean(ds_models.data, axis=0))
+    handles.append((h1, h2))
     labels.append('Mean & interquartile')
 
-    # --- weighted ----
-
     # --- perfect model ---
-    assert np.all(weights['model_ensemble'] == ds_models['model_ensemble'])
     if 'perfect_model_ensemble' in weights.dims:
-        weights = weights.sel(perfect_model_ensemble=perfect_model_ensemble)
         model_ensemble = list(ds_models['model_ensemble'].data)
-        model_ensemble.remove(perfect_model_ensemble)
+        model_ensemble.remove(args.perfect_model_ensemble)
         weights = weights.sel(model_ensemble=model_ensemble)
 
-        # plot 'true' model
-        [l2] = ax.plot(ds_models['time'].data,
-                       ds_models.sel(model_ensemble=perfect_model_ensemble).data,
-                       color='k', lw=2, zorder=3000)
-
-        label = f'Perfect model: {perfect_model_ensemble}'
+        plot_line(ds_models.sel(model_ensemble=args.perfect_model_ensemble))
+        label = f'Perfect model: {args.perfect_model_ensemble}'
 
         # remove perfect model
         ds_models = ds_models.sel(model_ensemble=model_ensemble)
 
-    l3a = ax.fill_between(
-        ds_models['time'].data,
+    # --- weighted ----
+    assert np.all(weights['model_ensemble'] == ds_models['model_ensemble'])
+    h1 = plot_shading(
         quantile(ds_models.data.swapaxes(0, 1), .25, weights=weights.data),
         quantile(ds_models.data.swapaxes(0, 1), .75, weights=weights.data),
-        facecolor='darkred',
-        edgecolor='none',
-        alpha=.2,
-        zorder=200,
-    )
-    [l3b] = ax.plot(
-        ds_models['time'].data,
+        color='darkred')
+    h2 = plot_line(
         np.average(ds_models.data, weights=weights.data, axis=0),
-        color='darkred',
-        lw=2,
-        zorder=2000,
-    )
-
-    handles.append((l3a, l3b))
+        color='darkred')
+    handles.append((h1, h2))
     labels.append('Weighted mean & interquartile')
 
-    def color(ww, ww_all):
-        """Different colors due to weights"""
-
-        # if ww > np.percentile(ww_all, 90):
-        #     return 'darkred'
-        # elif ww < np.percentile(ww_all, 10):
-        #     return 'darkviolet'
-        # return 'none'
-
-        if ww >= sorted(ww_all)[-3]:
-            return 'darkred'
-        elif ww < sorted(ww_all)[3]:
-            return 'darkviolet'
-        return 'none'
-
+    # --- lines ---
     for dd, ww in zip(ds_models.data, weights.data):
-        ax.plot(
-            ds_models['time'].data,
-            dd,
-            color=color(ww, weights),
-            lw=.2,
-            zorder=10,
-        )  # all lines
+        if ww >= sorted(weights)[-3]:
+            color = 'darkred'
+        elif ww < sorted(weights)[3]:
+            color = 'darkviolet'
+        else:
+            continue
+        plot_line(dd, color=color, lw=.2)
 
-    [ll] = ax.plot([], [], color='darkred', lw=1)
-    handles.append(ll)
+    h1 = ax.plot([], [], color='darkred', lw=1)[0]
+    handles.append(h1)
     labels.append('Highest 3 models')
 
-    [ll] = ax.plot([], [], color='darkviolet', lw=1)
-    handles.append(ll)
+    h1 = ax.plot([], [], color='darkviolet', lw=1)[0]
+    handles.append(h1)
     labels.append('Lowest 3 models')
 
     # --- observations ---
     if ds_obs is not None and len(ds_obs['dataset']) == 1:
-        if 'dataset_dim' in ds_obs.dims:
-            oo = ds_obs.isel(dataset_dim=0)
-        elif 'dataset' in ds_obs.dims:
-            oo = ds_obs.isel(dataset=0)
-        else:
-            oo = ds_obs
-
-        try:
-            [l2] = ax.plot(
-                ds_obs['time'].data,
-                oo.data,
-                color='k',
-                lw=2,
-                zorder=3000,
-        )
-        except Exception:
-            import ipdb; ipdb.set_trace()
+        h1 = plot_line(ds_obs.data.squeeze(), xx=ds_obs['year'].data, color='k')
         label = 'Observations full range'
+        # label = 'Pseudo observations: CESM2'  # TODO: !!
     elif ds_obs is not None:
-        min_ = ds_obs.min('dataset', skipna=False)
-        max_ = ds_obs.max('dataset', skipna=False)
-        l2 = ax.fill_between(
-            ds_obs['time'].data,
-            min_.data,
-            max_.data,
-            color='k',
-            zorder=10,
-        )
-        [l2] = ax.plot([], [], color='k', lw=2)  # use line for legend
+        plot_shading(
+            ds_obs.min('dataset', skipna=False),
+            ds_obs.max('dataset', skipna=False),
+            xx=ds_obs['year'].data,
+            color='k', alpha=1)
+        h1 = ax.plot([], [], color='k', lw=2)[0]  # use line for legend
         label = 'Observations full range'
-    handles.append(l2)
+    handles.append(h1)
     labels.append(label)
+
+    # # try:
+    # ax.axvspan(2081, 2100, alpha=.3, facecolor='darkblue', zorder=-999, edgecolor='none')
+
+    # baseline = crps_ensemble(
+    #     ds_obs.sel(year=slice('2081', '2100')).mean('year').data.squeeze(),
+    #     ds_models.sel(year=slice('2081', '2100')).mean('year').data)
+    # weighted = crps_ensemble(
+    #     ds_obs.sel(year=slice('2081', '2100')).mean('year').data.squeeze(),
+    #     ds_models.sel(year=slice('2081', '2100')).mean('year').data,
+    #     weights=weights.data)
+    # crps = (baseline - weighted) / baseline
+
+    # ax.text(2091, 16.1, f'CRPS\n{crps:+.1%}', ha='center', va='bottom')
+    # except Exception:
+    #     pass
 
     # --- special and variable dependent settings ---
     # indicate and label different periods
@@ -326,30 +283,30 @@ def plot(ds_models, ds_obs, weights, args, cfg):
         plt.show()
     else:
         os.makedirs(PLOTPATH, exist_ok=True)
-        savename = os.path.join(os.path.join(PLOTPATH, args.config))
+        savename = os.path.join(os.path.join(PLOTPATH, ds.attrs['config']))
         if args.change:
             savename += '_change'
         if ds_obs is None:
-            savename += f'_{perfect_model_ensemble}'
+            savename += f'_{args.perfect_model_ensemble}'
         plt.savefig(f'{savename}.{args.ext}', dpi=300)
         print(os.path.abspath(f'{savename}.{args.ext}'))
 
 
 def main():
-    cfg, args = read_input()
+    args = read_input()
+    ds = xr.open_dataset(args.filename)
 
-    # read results file
-    filename = os.path.join(cfg.save_path, cfg.config + '.nc')
-    ds_results = xr.open_dataset(filename)
+    cfg = read_config(ds.attrs['config'], ds.attrs['config_path'])
+    log_parser(cfg)
 
-    ds_obs, mask = read_obs(cfg, args.change)
-    ds_models = read_models(ds_results['filename'], mask, args.change, cfg)
+    ds_obs, nan_mask = read_obs(ds, cfg, args.change)
+    ds_models = read_models(ds, nan_mask, cfg, args.change)
 
     plot(ds_models[cfg.target_diagnostic],
-         ds_obs[cfg.target_diagnostic] if ds_obs is not None else None,
-         ds_results['weights'],
+         ds_obs,
+         ds['weights'],
          args,
-         cfg)
+         ds)
 
 
 if __name__ == '__main__':
