@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-10-09 09:29:10 lukbrunn>
+Time-stamp: <2019-10-11 09:17:55 lukbrunn>
 
 (c) 2019 under a MIT License (https://mit-license.org)
 
@@ -32,7 +32,9 @@ warnings.filterwarnings('ignore')
 quantile = np.vectorize(quantile, signature='(n)->()', excluded=[1, 'weights', 'interpolation', 'old_style'])
 period_ref = slice('1995', '2014')
 
-PLOTPATH = '../../plots/timeseries/'
+PLOTPATH = os.path.join(
+    os.path.dirname(os.path.realpath(__file__)),
+    '../../plots/timeseries/')
 
 
 def read_input():
@@ -121,7 +123,8 @@ def read_obs(ds, cfg, change):
             ds_var = xr.concat([ds_var, ds_var2], dim='time')
 
         ds_var = ds_var.isel(time=ds_var['time.season'] == cfg.target_season)
-        ds_var = ds_var.sel(time=slice('1980', '2014'))
+        if len(obs_id) > 1:
+            ds_var = ds_var.sel(time=period_ref)
         ds_var = ds_var.groupby('time.year').mean('time')
 
         ds_var = flip_antimeridian(ds_var)
