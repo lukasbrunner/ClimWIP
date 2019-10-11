@@ -144,10 +144,12 @@ def standardize_units(da, varn):
 
     # --- pressure ---
     elif varn in ['psl']:
-        newunit = 'pa'
-        if unit.lower() == newunit:
+        newunit = 'Pa'
+        if unit == newunit:
             pass
-        elif unit.lower() == 'hPa':
+        if unit == 'pa':
+            da.attrs['units'] = newunit
+        elif unit in ['hPa', 'hpa']:
             da.data *= 100.
             da.attrs['units'] = newunit
         else:
