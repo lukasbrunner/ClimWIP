@@ -18,7 +18,7 @@ Content
 Idea and Publications
 ---------------------
 
-Brunner, L. et al. (submitted): Quantifying uncertainty in European climate projections using combined performance-independence weighting. _Eniron. Res. Lett._
+Brunner, L. et al. (2019): Quantifying uncertainty in European climate projections using combined performance-independence weighting. _Eniron. Res. Lett._ DOI: <a href="https://doi.org/10.1088/1748-9326/ab492f">10.1088/1748-9326/ab492f</a>
 
 Lorenz, R. et al. (2018): Prospects and caveats of weighting climate models for summer maximum temperature projections over North America. _Journal of Geophysical Research: Atmospheres_, 123, 4509–4526. DOI: <a href="http://doi.wiley.com/10.1029/2017JD027992">10.1029/2017JD027992</a>
 
