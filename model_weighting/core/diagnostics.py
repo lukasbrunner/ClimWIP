@@ -147,7 +147,7 @@ def standardize_units(da, varn):
         newunit = 'Pa'
         if unit == newunit:
             pass
-        if unit == 'pa':
+        elif unit == 'pa':
             da.attrs['units'] = newunit
         elif unit in ['hPa', 'hpa']:
             da.data *= 100.
