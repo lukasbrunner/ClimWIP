@@ -52,7 +52,7 @@ def calculate_weights(quality, independence, sigma_q, sigma_i):
     numerator, denominator : ndarray, shape (N,)
     """
     assert len(quality.shape) == 1, 'quality needs to be a 1D array'
-    assert len(independence.shape) == 2, 'quality needs to be a 2D array'
+    assert len(independence.shape) == 2, 'independence needs to be a 2D array'
     errmsg = 'quality and independence need to have matching shapes'
     assert quality.shape == independence.shape[:1], errmsg
     assert isinstance(sigma_q, float), 'sigma_q needs to by of type float'
