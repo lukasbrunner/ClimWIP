@@ -70,7 +70,7 @@ from core.utils_xarray import (
 )
 from core.plots import (
     plot_rmse,
-    # plot_maps,
+    plot_maps,
     plot_fraction_matrix,
     plot_weights,
 )
@@ -369,7 +369,7 @@ def calc_predictors(filenames, cfg):
             for obs_path, obs_id in zip(cfg.obs_path, cfg.obs_id):
                 filename = os.path.join(obs_path, f'{varn}_mon_{obs_id}_g025.nc')
 
-                with utils.LogTime(f'Calculate diagnostic for {obs_id}', level='debug'):
+                with utils.LogTime(f'Calculate diagnostic for {obs_id}', level='info'):
                     obs = calculate_diagnostic(
                         infile=filename,
                         diagn=diagn,
@@ -478,6 +478,7 @@ def calc_predictors(filenames, cfg):
         [dd['rmse_models'] for dd in diagnostics_all], dim='diagnostics')
     delta_i = delta_i.mean('diagnostics')
     delta_i.name = 'delta_i'
+
     if cfg.obs_id is not None:
         delta_q = xr.concat(
             [dd['rmse_obs'] for dd in diagnostics_all], dim='diagnostics')
@@ -558,13 +559,14 @@ def calc_sigmas(targets, delta_i, unique_models, cfg, n_sigmas=50):
 
     # ratio of perfect models inside their respective weighted percentiles
     # for each sigma combination
+
     inside_ratio = perfect_model_test(
         targets_1ens_mean, weights_sigmas,
         perc_lower=cfg.percentiles[0],
         perc_upper=cfg.percentiles[1])
 
-    force_inside_ratio = cfg.inside_ratio == 'force'
-    if cfg.inside_ratio is None or cfg.inside_ratio == 'force':
+    force_inside_ratio = cfg.inside_ratio.lower() == 'force'
+    if cfg.inside_ratio is None or force_inside_ratio:
         cfg.inside_ratio = cfg.percentiles[1] - cfg.percentiles[0]
     inside_ok = inside_ratio >= cfg.inside_ratio
 
