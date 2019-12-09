@@ -159,8 +159,10 @@ def get_filenames(varns, ids, scenarios, base_paths, all_members, subset=None):
 
         if subset is not None:
             if not set(subset).issubset(list(filenames[varn].keys())):
-                errmsg = ' '.join(['subset is not None but not all models in',
-                                   'subset were found for all variables'])
+                missing = set(subset).difference(list(filenames[varn].keys()))
+                errmsg = ' '.join(['subset is not None but these models in',
+                                   'subset were found for all variables:',
+                                   ', '.join(missing)])
                 raise ValueError(errmsg)
             delete_models = np.setdiff1d(list(filenames[varn].keys()), subset)
             for delete_model in delete_models:
@@ -184,6 +186,6 @@ def get_filenames(varns, ids, scenarios, base_paths, all_members, subset=None):
     logger.info(f'{len(unique_common_models)} models found')
     logger.info(f'{len(filenames[varns[0]])} runs selected')
     logger.info(f', '.join(sorted(unique_models, key=lambda x: x.split('_')[1])))
-    logger.debug(', '.join(filenames[varns[0]].keys()))
+    logger.info(', '.join(filenames[varns[0]].keys()))
 
     return filenames, np.array(unique_common_models)
