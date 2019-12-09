@@ -112,6 +112,10 @@ def test_config(cfg):
         cfg.obs_uncertainty
     except AttributeError:
         cfg.obs_uncertainty = 'center'
+    if (not isinstance(cfg['target_masko'], bool) or
+        not np.all([isinstance(masko, bool) for masko in cfg['predictor_masko']])):
+        errmsg = 'masko must be bool!'
+        raise ValueError(errmsg)
 
     if cfg.obs_id is not None and cfg.obs_path is not None:
         if isinstance(cfg.obs_id, str):
@@ -261,6 +265,7 @@ def calc_target(filenames, cfg):
                 )
                 target[cfg.target_diagnostic] -= target_hist[cfg.target_diagnostic]
                 target_hist['model_ensemble'] = xr.DataArray([model_ensemble], dims='model_ensemble')
+
                 clim.append(target_hist)
 
         target['model_ensemble'] = xr.DataArray([model_ensemble], dims='model_ensemble')
