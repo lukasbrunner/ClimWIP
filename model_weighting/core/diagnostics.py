@@ -42,7 +42,8 @@ from .utils_xarray import (
     detrend,
     trend,
     correlation,
-    flip_antimeridian
+    flip_antimeridian,
+    area_weighted_mean,
 )
 
 cdo = Cdo()
@@ -96,9 +97,10 @@ def standardize_units(da, varn):
                 'they actually represent the mean of daily m or mm and should',
                 'therefore have the unit m/day & mm/day. This is even wrong',
                 'in the ERA5 monthly mean files downloaded from copernicus.',
-                'To avoid having this mistake fail silently and apply a',
-                'wrong correction here the usage of m & mm as unit is',
-                'disallowed for now! Please check the input files and change',
+                # 'To avoid having this mistake fail silently and apply a',
+                # 'wrong correction here the usage of m & mm as unit is',
+                # 'disallowed for now!
+                'Please check the input files and change',
                 'the unit accordingly (e.g., using',
                 '<cdo chunit,m,m/day infile outfile>'])
             # # http://cfconventions.org/Data/cf-conventions/cf-conventions-1.7/cf-conventions.html#calendar
@@ -116,7 +118,8 @@ def standardize_units(da, varn):
             # da /= days_in_month
             # if unit == 'm':
             #     da.data *= 1000
-            raise ValueError(errmsg)
+            # raise ValueError(errmsg)
+            logger.warning(errmsg)
         elif unit == 'm/day':  # ERA5
             da.data *= 1000
             da.attrs['units'] = newunit
@@ -219,13 +222,13 @@ def calculate_basic_diagnostic(infile, varn,
         The variable contained in infile.
     outfile : str, optional
         Full path of the output file. Path must exist.
-    id_ : {'CMIP6', 'CMIP5', 'CMIP3'}, optional
+    id_ : {'CMIP6', 'CMIP5', 'CMIP3', 'LE'}, optional
         A valid model ID
     time_period : tuple of two strings, optional
         Start and end of the time period. Both strings must be on of
         {"yyyy", "yyyy-mm", "yyyy-mm-dd"}.
     season : {'JJA', 'SON', 'DJF', 'MAM', 'ANN'}, optional
-    time_aggregation : {'CLIM', 'STD', 'TREND'}, optional
+    time_aggregation : {'CLIM', 'STD', 'TREND', 'ANOM-GOBAL', 'ANOM-LOCAL'}, optional
         Type of time aggregation to use.
     mask_ocean : bool, optional
     region : list of strings or str, optional
@@ -257,7 +260,7 @@ def calculate_basic_diagnostic(infile, varn,
         da = xr.open_dataset(infile, use_cftime=True)[varn]
 
     try:
-        da = da.drop('height')
+        da = da.drop_vars('height')
     except ValueError:
         pass
 
@@ -274,6 +277,15 @@ def calculate_basic_diagnostic(infile, varn,
         pass
     else:
         raise NotImplementedError('season={}'.format(season))
+
+    if mask_ocean:
+        sea_mask = regionmask.defined_regions.natural_earth.land_110.mask(da) == 0
+        da = da.where(sea_mask)
+
+    if time_aggregation == 'ANOM-GLOBAL':
+        da_mean = da.groupby('time.year').mean('time', skipna=False)
+        da_mean = da_mean.mean('year', skipna=False)
+        da_mean = area_weighted_mean(da_mean)
 
     if region != 'GLOBAL':
         if (isinstance(region, str) and
@@ -313,10 +325,6 @@ def calculate_basic_diagnostic(infile, varn,
             logger.error(errmsg)
             raise ValueError(errmsg)
 
-    if mask_ocean:
-        sea_mask = regionmask.defined_regions.natural_earth.land_110.mask(da) == 0
-        da = da.where(sea_mask)
-
     if idx_lats is not None and idx_lons is not None:
         da = da.isel(lat=idx_lats, lon=idx_lons)
         if np.all(np.isnan(da.isel(time=0))):
@@ -335,6 +343,28 @@ def calculate_basic_diagnostic(infile, varn,
             # mean of seasonal (annual) means
             da = da.groupby('time.year').mean('time', skipna=False)
             da = da.mean('year', skipna=False)
+        elif time_aggregation == 'ANOM-LOCAL':
+            da = da.groupby('time.year').mean('time', skipna=False)
+            da = da.mean('year', skipna=False)
+
+            size = (~np.isnan(da)).sum()  # number of not NAN grid cells
+            if size == 1:
+                errmsg = ' '.join([
+                    'ANOM-LOCAL is not possible for regions with only one',
+                    'grid cell which is not NAN! Consider using ANOM-GLOBAL?'])
+                logger.error(errmsg)
+                raise ValueError(errmsg)
+            elif size < 10:
+                logmsg = ' '.join([
+                    'ANOM-LOCAL is not recommended for regions with less than',
+                    '10 gird cells which are not NAN! Consider using ANOM-GLOBAL?'])
+                logger.warning(logmsg)
+            da -= area_weighted_mean(da)
+        elif time_aggregation == 'ANOM-GLOBAL':
+            da = da.groupby('time.year').mean('time', skipna=False)
+            da = da.mean('year', skipna=False)
+            da -= da_mean
+
         elif time_aggregation == 'STD':
             # standard deviation of de-trended seasonal (annual) means
             da = da.groupby('time.year').mean('time', skipna=False)
