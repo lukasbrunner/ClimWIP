@@ -42,7 +42,7 @@ Knutti, R. (2018). Prospects and caveats of weighting climate models for
 summer maximum temperature projections over North America. Journal of
 Geophysical Research: Atmospheres, 123, 4509–4526. doi:10.1029/2017JD027992.
 
-Brunner, L., R. Lorenz, M. Zumwald, R. Knutti (accepted): Quantifying uncertainty
+Brunner, L., R. Lorenz, M. Zumwald, R. Knutti (2019): Quantifying uncertainty
 in European climate projections using combined performance-independence weighting.
 Eniron. Res. Lett., https://doi.org/10.1088/1748-9326/ab492f
 """
