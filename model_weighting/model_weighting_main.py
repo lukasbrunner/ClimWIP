@@ -570,7 +570,8 @@ def calc_sigmas(targets, delta_i, unique_models, cfg, n_sigmas=50):
         perc_lower=cfg.percentiles[0],
         perc_upper=cfg.percentiles[1])
 
-    force_inside_ratio = cfg.inside_ratio.lower() == 'force'
+    if cfg.inside_ratio is not None and cfg.inside_ratio.lower() == 'force':
+        force_inside_ratio = True
     if cfg.inside_ratio is None or force_inside_ratio:
         cfg.inside_ratio = cfg.percentiles[1] - cfg.percentiles[0]
     inside_ok = inside_ratio >= cfg.inside_ratio
