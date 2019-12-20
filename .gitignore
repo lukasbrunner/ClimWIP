@@ -7,6 +7,10 @@ __pycache__/
 model_weighting/configs/
 !model_weighting/configs/config_default.ini
 
+model_weighting/logfiles/
+model_weighting/shapefiles/
+plot*/
+
 # emacs backup files
 *~
 
