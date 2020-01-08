@@ -497,18 +497,20 @@ def calc_independence(filenames, cfg):
 def _normalize(data, normalize_by):
     """Apply different normalization schemes to the right dimensions"""
     normalize_by = normalize_by[0]
-    if not isinstance(normalize_by, str):
+    try:
+        normalize_by = float(normalize_by)
         assert normalize_by > np.nanmin(data) / 10.
         assert normalize_by < np.nanmax(data) * 10
         normalizer = normalize_by
-    elif normalize_by.lower() == 'middle':
-        normalizer = .5*(np.nanmin(data) + np.nanmax(data))
-    elif normalize_by.lower() == 'median':
-        normalizer = np.nanmedian(data)
-    elif normalize_by.lower() == 'mean':
-        normalizer = np.nanmean(data)
-    else:
-        raise ValueError
+    except ValueError:
+        if normalize_by.lower() == 'middle':
+            normalizer = .5*(np.nanmin(data) + np.nanmax(data))
+        elif normalize_by.lower() == 'median':
+            normalizer = np.nanmedian(data)
+        elif normalize_by.lower() == 'mean':
+            normalizer = np.nanmean(data)
+        else:
+            raise ValueError
 
     return data / normalizer
 

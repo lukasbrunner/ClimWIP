@@ -265,11 +265,13 @@ def process_performance_parameters(cfg):
 
     size = len(cfg.performance_diagnostics)
     for param in expand_parameters:
-        if not isinstance(cfg[param], list):
+        if not isinstance(cfg[param], list) and cfg[param] is not None:
             # allow only one value for some parameters and expand to list here
             cfg[param] = [cfg[param]] * size
 
     for param in performance_parameters.keys():
+        if cfg[param] is None:
+            continue
         if not isinstance(cfg[param], list):
             raise ValueError
         if len(cfg[param]) != size:
@@ -317,11 +319,13 @@ def process_independence_parameters(cfg):
 
     size = len(cfg.independence_diagnostics)
     for param in expand_parameters:
-        if not isinstance(cfg[param], list):
+        if not isinstance(cfg[param], list) and cfg[param] is not None:
             # allow only one value for some parameters and expand to list here
             cfg[param] = [cfg[param]] * size
 
     for param in independence_parameters.keys():
+        if cfg[param] is None:
+            continue
         if not isinstance(cfg[param], list):
             raise ValueError
         if len(cfg[param]) != size:
@@ -340,6 +344,39 @@ def process_sigmas(cfg):
     # TODO: is it allowed to have one sigma None and the other set?
     # TODO: I think I can remove the sigma = -99 case with the new separation between
     # dependence and performance
+
+
+def check_perfect_model_test(cfg):
+    """
+    For the perfect model test the performance and independence parameters
+    need to be identical. So setting them separately is only allowed if the
+    sigma values are use-given so that the perfect model test can be omitted.
+    """
+    parameters = [
+        '{}_diagnostics',
+        '{}_aggs',
+        '{}_seasons',
+        '{}_masko',
+        '{}_regions',
+        '{}_startyears',
+        '{}_endyears',
+        '{}_normalizers',
+        '{}_weights',
+    ]
+    same = True
+    for param in parameters:
+        print(cfg[param.format('performance')])
+        if ((cfg[param.format('performance')] is None and cfg[param.format('independence')] is not None) or
+            (cfg[param.format('performance')] is not None and cfg[param.format('independence')] is None)):
+            same = False
+        elif cfg[param.format('performance')] is None and cfg[param.format('independence')] is None:
+            pass
+        elif not tuple(cfg[param.format('performance')]) == tuple(cfg[param.format('independence')]):
+            same = False
+
+    if not same and cfg.sigma_i is None or cfg.sigma_q is None:
+        errmsg = 'If performance_* and independence_* parameters are not identical sigmas have to be set!'
+        raise ValueError(errmsg)
 
 
 def read_config(config, config_file):
@@ -368,5 +405,6 @@ def read_config(config, config_file):
     process_independence_parameters(cfg)
     process_multi_vars(cfg)
     process_sigmas(cfg)
+    check_perfect_model_test(cfg)
     utils.log_parser(cfg)
     return cfg
