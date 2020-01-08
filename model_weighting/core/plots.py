@@ -61,8 +61,12 @@ def plot_rmse(da, idx, cfg, da2=None):
         Has to contain the RMSE from each model to the observations
     """
     if isinstance(idx, int):
-        diagn = cfg.predictor_diagnostics[idx]
-        agg = cfg.predictor_aggs[idx]
+        try:
+            diagn = cfg.performance_diagnostics[idx]
+            agg = cfg.performance_aggs[idx]
+        except AttributeError:
+            diagn = cfg.independence_diagnostics[idx]
+            agg = cfg.independence_aggs[idx]
         title = 'Normalized RMSE {} {}'.format(diagn, agg)
         filename = 'rmse_{}-{}'.format(diagn, agg)
     else:
@@ -97,7 +101,6 @@ def plot_rmse(da, idx, cfg, da2=None):
     plt.savefig(filename, dpi=300)
     plt.clf()
     logger.debug('Saved plot: {}.png'.format(filename))
-    return filename
 
 
 def plot_fraction_matrix(xx, yy, data, cfg, idx=None, title=''):

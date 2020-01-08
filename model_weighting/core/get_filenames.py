@@ -89,7 +89,7 @@ def get_unique_filenames(filenames, unique_models):
     return filenames
 
 
-def get_filenames(varns, ids, scenarios, base_paths, all_members, subset=None):
+def get_filenames(cfg):
     """
     Collects all filenames matching the set criteria.
 
@@ -99,23 +99,7 @@ def get_filenames(varns, ids, scenarios, base_paths, all_members, subset=None):
 
     Parameters
     ----------
-    varns : list of strings
-        A list of valid CMIP5 variable names.
-    ids : string or list of strings {'CMIP6', 'CMIP5', 'CMIP3'}
-        Valid model IDs.
-    scenarios : string or list of strings
-        Valid scenarios. Must have same length as ids.
-    base_paths : string or list of strings
-        Base paths of the model archives. Must have same length as ids.
-    all_members : bool
-        If False only one initial-condition member per model will be used.
-        Note that due to sorting this might not necessarily be the first
-        (i.e., the r1i1p1) member (but rather, e.g., r10i1p1).
-    subset : None or list of strings
-        If not None must be a list of valid model identifyers (e.g.,
-        ['CESM12_r1i1pi_CMIP5']). If one of the models available for all
-        variables a ValueError will be raised to ensure that all models in the
-        list are included.
+    cfg : config object
 
     Returns
     -------
@@ -131,19 +115,32 @@ def get_filenames(varns, ids, scenarios, base_paths, all_members, subset=None):
         effect as setting all_members=False. This is indented for use in the
         perfect model test.
     """
+    # get basic variables for diagnostics
+    varns = []
+    if cfg.performance_diagnostics is not None:
+        for varn in cfg.performance_diagnostics:
+            if isinstance(varn, dict):  # multi-variable diagnostic
+                varns.append([*varn.values()][0, 0])
+                varns.append([*varn.values()][0, 1])
+            else:
+                varns.append(varn)
+    if cfg.independence_diagnostics is not None:
+        for varn in cfg.independence_diagnostics:
+            if isinstance(varn, dict):
+                varns.append([*varn.values()][0, 0])
+                varns.append([*varn.values()][0, 1])
+            else:
+                varns.append(varn)
+    if cfg.target_diagnostic is not None:
+        # only if sigmas are None we need to calculate the target
+        varns += [cfg.target_diagnostic]
 
-    if isinstance(ids, str):
-        ids = [ids]
-    if isinstance(scenarios, str):
-        scenarios = [scenarios]
-    if isinstance(base_paths, str):
-        base_paths = [base_paths]
-    if len(ids) != len(scenarios) or len(ids) != len(base_paths):
-        raise ValueError('ids, scenarios, and base_paths need to have same lenght')
+    varns = np.unique(varns)  # we need each variable only once
+
     filenames = {}
     for varn in varns:  # get all files for all variables first
         filenames[varn] = {}
-        for id_, scenario, base_path in zip(ids, scenarios, base_paths):
+        for id_, scenario, base_path in zip(cfg.model_id, cfg.model_scenario, cfg.model_path):
             filenames[varn].update(get_filenames_var(varn, id_, scenario, base_path))
 
         try:
@@ -157,18 +154,18 @@ def get_filenames(varns, ids, scenarios, base_paths, all_members, subset=None):
         for delete_model in delete_models:
             filenames[varn].pop(delete_model)
 
-        if subset is not None:
-            if not set(subset).issubset(list(filenames[varn].keys())):
-                missing = set(subset).difference(list(filenames[varn].keys()))
+        if cfg.subset is not None:
+            if not set(cfg.subset).issubset(list(filenames[varn].keys())):
+                missing = set(cfg.subset).difference(list(filenames[varn].keys()))
                 errmsg = ' '.join(['subset is not None but these models in',
                                    'subset were found for all variables:',
                                    ', '.join(missing)])
                 raise ValueError(errmsg)
-            delete_models = np.setdiff1d(list(filenames[varn].keys()), subset)
+            delete_models = np.setdiff1d(list(filenames[varn].keys()), cfg.subset)
             for delete_model in delete_models:
                 filenames[varn].pop(delete_model)
 
-    if subset is not None:
+    if cfg.subset is not None:
         for delete_model in delete_models:
             common_models.remove(delete_model)
 
@@ -180,7 +177,7 @@ def get_filenames(varns, ids, scenarios, base_paths, all_members, subset=None):
             unique_models.append(model)
             unique_common_models.append(model_ensemble)
 
-    if not all_members:
+    if not cfg.ensembles:
         filenames = get_unique_filenames(filenames, unique_common_models)
 
     logger.info(f'{len(unique_common_models)} models found')
