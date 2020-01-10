@@ -90,75 +90,6 @@ REGRID_OBS = [
     'ERA-Interim']
 
 
-def test_config(cfg):
-    """Some basic consistency tests for the config input"""
-    if len({len(cfg[key]) for key in cfg.keys() if 'predictor' in key}) != 1:
-        errmsg = 'All predictor_* variables need to have same length'
-        raise ValueError(errmsg)
-    if not os.access(cfg.save_path, os.W_OK | os.X_OK):
-        raise ValueError('save_path is not writable')
-    if (cfg.plot_path is not None and
-        not os.access(cfg.plot_path, os.W_OK | os.X_OK)):
-        raise ValueError('plot_path is not writable')
-    if not np.all([isinstance(cfg.overwrite, bool),
-                   isinstance(cfg.plot, bool)]):
-        raise ValueError('Typo in overwrite, debug, plot?')
-    if cfg.ensemble_independence and not cfg.ensembles:
-        raise ValueError('Can not use ensemble_independence without ensembles')
-    if cfg.sigma_i is not None:
-        cfg.sigma_i = float(cfg.sigma_i)
-    if cfg.sigma_q is not None:
-        cfg.sigma_q = float(cfg.sigma_q)
-    try:
-        cfg.obs_uncertainty
-    except AttributeError:
-        cfg.obs_uncertainty = 'center'
-    if (not isinstance(cfg['target_masko'], bool) or
-        not np.all([isinstance(masko, bool) for masko in cfg['predictor_masko']])):
-        errmsg = 'masko must be bool!'
-        raise ValueError(errmsg)
-
-    if cfg.obs_id is not None and cfg.obs_path is not None:
-        if isinstance(cfg.obs_id, str):
-            cfg.obs_id = [cfg.obs_id]
-        if isinstance(cfg.obs_path, str):
-            cfg.obs_path = [cfg.obs_path]
-        if len(cfg.obs_id) != len(cfg.obs_path):
-            errmsg = 'obs_id and obs_path need to have same length!'
-            logger.error(errmsg)
-            raise ValueError(errmsg)
-
-    try:
-        cfg.idx_lats = np.atleast_1d(cfg.idx_lats)
-        cfg.idx_lons = np.atleast_1d(cfg.idx_lons)
-    except AttributeError:
-        cfg.idx_lats = None
-        cfg.idx_lons = None
-
-    if cfg.target_diagnostic is None and not (
-            cfg.sigma_q is None and cfg.sigma_i is None):
-        errmsg = 'If target_diagnostic is None, both sigmas need to be set!'
-        logger.error(errmsg)
-        raise ValueError(errmsg)
-
-    if isinstance(cfg.model_path, str):
-        cfg.model_path = [cfg.model_path]
-    if isinstance(cfg.model_id, str):
-        cfg.model_id = [cfg.model_id]
-    if isinstance(cfg.model_scenario, str):
-        cfg.model_scenario = [cfg.model_scenario]
-    if len({len(cfg[key]) for key in cfg.keys() if 'model_' in key}) != 1:
-        errmsg = 'All model_* variables need to have same length'
-        raise ValueError(errmsg)
-
-    try:
-        cfg.subset
-    except AttributeError:
-        cfg.subset = None
-
-    return None
-
-
 def read_args():
     """Read the given configuration from the config file"""
     parser = argparse.ArgumentParser(
@@ -178,28 +109,6 @@ def read_args():
         '--logging-file', '-log-file', dest='log_file', default=None,
         type=str, help='Redirect logging output to given file')
     return parser.parse_args()
-
-
-# def read_config(config, config_file):
-#     """Read a configuration from a configuration file.
-
-#     Parameters
-#     ----------
-#     config : string
-#         A string identifying a configuration in config_file. This string will
-#         also be used to name the final output file.
-#     config_file : string
-#         A valid configuration file name (ending with ".ini")
-
-#     Returns
-#     -------
-#     cfg : configuration object
-#         A configuration object with must contain all mandatory configurations.
-#     """
-#     cfg = utils.read_config(config, config_file)
-#     utils.log_parser(cfg)
-#     # test_config(cfg)
-#     return cfg
 
 
 def calc_target(filenames, cfg):
@@ -239,7 +148,7 @@ def calc_target(filenames, cfg):
                     cfg.target_endyear),
                 season=cfg.target_season,
                 time_aggregation=cfg.target_agg,
-                mask_ocean=cfg.target_masko,
+                mask_land_sea=cfg.target_mask,
                 region=cfg.target_region,
                 overwrite=cfg.overwrite,
                 idx_lats=cfg.idx_lats,
@@ -258,7 +167,7 @@ def calc_target(filenames, cfg):
                         cfg.target_endyear_ref),
                     season=cfg.target_season,
                     time_aggregation=cfg.target_agg,
-                    mask_ocean=cfg.target_masko,
+                    mask_land_sea=cfg.target_mask,
                     region=cfg.target_region,
                     overwrite=cfg.overwrite,
                     idx_lats=cfg.idx_lats,
@@ -323,7 +232,7 @@ def calc_performance(filenames, cfg):
                         cfg.performance_endyears[idx]),
                     season=cfg.performance_seasons[idx],
                     time_aggregation=cfg.performance_aggs[idx],
-                    mask_ocean=cfg.performance_masko[idx],
+                    mask_land_sea=cfg.performance_masks[idx],
                     region=cfg.performance_regions[idx],
                     overwrite=cfg.overwrite,
                     idx_lats=cfg.idx_lats,
@@ -352,7 +261,7 @@ def calc_performance(filenames, cfg):
                         cfg.performance_endyears[idx]),
                     season=cfg.performance_seasons[idx],
                     time_aggregation=cfg.performance_aggs[idx],
-                    mask_ocean=cfg.performance_masko[idx],
+                    mask_land_sea=cfg.performance_masks[idx],
                     region=cfg.performance_regions[idx],
                     overwrite=cfg.overwrite,
                     regrid=obs_id in REGRID_OBS,
@@ -457,7 +366,7 @@ def calc_independence(filenames, cfg):
                         cfg.independence_endyears[idx]),
                     season=cfg.independence_seasons[idx],
                     time_aggregation=cfg.independence_aggs[idx],
-                    mask_ocean=cfg.independence_masko[idx],
+                    mask_land_sea=cfg.independence_masks[idx],
                     region=cfg.independence_regions[idx],
                     overwrite=cfg.overwrite,
                     idx_lats=cfg.idx_lats,

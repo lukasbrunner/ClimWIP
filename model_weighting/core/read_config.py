@@ -44,7 +44,7 @@ def set_default_values(cfg):
         'independence_diagnostics',
         'independence_aggs',
         'independence_seasons',
-        'independence_masko',
+        'independence_masks',
         'independence_regions',
         'independence_startyears',
         'independence_endyears',
@@ -164,7 +164,7 @@ def process_obs_parameters(cfg):
     obs_parameters = {
         'obs_path': str,
         'obs_id': str,
-        'obs_uncertainty': str,
+        'obs_uncertainty': (str, type(None)),
     }
 
     if cfg.obs_path is None:
@@ -200,7 +200,7 @@ def process_target_parameters(cfg):
         'target_diagnostic': str,
         'target_agg': str,
         'target_season': str,
-        'target_masko': bool,
+        'target_mask': (bool, str),
         'target_region': str,
         'target_startyear': int,
         'target_endyear': int,
@@ -220,11 +220,12 @@ def process_target_parameters(cfg):
 
 def process_multi_vars(cfg):
     for param in ['performance_diagnostics', 'independence_diagnostics']:
-        for idx, diagn in enumerate(cfg[param]):
-            if '-' in diagn:
-                varns = diagn.split('-')
-                assert len(varns) == 2
-                cfg[param][idx] = {diagn: varns}
+        if cfg[param] is not None:
+            for idx, diagn in enumerate(cfg[param]):
+                if '-' in diagn:
+                    varns = diagn.split('-')
+                    assert len(varns) == 2
+                    cfg[param][idx] = {diagn: varns}
 
 
 def process_performance_parameters(cfg):
@@ -232,7 +233,7 @@ def process_performance_parameters(cfg):
         'performance_diagnostics': str,
         'performance_aggs': str,
         'performance_seasons': str,
-        'performance_masko': bool,
+        'performance_masks': (bool, str),
         'performance_regions': str,
         'performance_startyears': int,
         'performance_endyears': int,
@@ -242,7 +243,7 @@ def process_performance_parameters(cfg):
 
     expand_parameters = [
         'performance_seasons',
-        'performance_masko',
+        'performance_masks',
         'performance_regions',
         'performance_startyears',
         'performance_endyears',
@@ -286,7 +287,7 @@ def process_independence_parameters(cfg):
         'independence_diagnostics': str,
         'independence_aggs': str,
         'independence_seasons': str,
-        'independence_masko': bool,
+        'independence_masks': (bool, str),
         'independence_regions': str,
         'independence_startyears': int,
         'independence_endyears': int,
@@ -296,7 +297,7 @@ def process_independence_parameters(cfg):
 
     expand_parameters = [
         'independence_seasons',
-        'independence_masko',
+        'independence_masks',
         'independence_regions',
         'independence_startyears',
         'independence_endyears',
@@ -356,7 +357,7 @@ def check_perfect_model_test(cfg):
         '{}_diagnostics',
         '{}_aggs',
         '{}_seasons',
-        '{}_masko',
+        '{}_masks',
         '{}_regions',
         '{}_startyears',
         '{}_endyears',
@@ -365,7 +366,6 @@ def check_perfect_model_test(cfg):
     ]
     same = True
     for param in parameters:
-        print(cfg[param.format('performance')])
         if ((cfg[param.format('performance')] is None and cfg[param.format('independence')] is not None) or
             (cfg[param.format('performance')] is not None and cfg[param.format('independence')] is None)):
             same = False
@@ -374,7 +374,7 @@ def check_perfect_model_test(cfg):
         elif not tuple(cfg[param.format('performance')]) == tuple(cfg[param.format('independence')]):
             same = False
 
-    if not same and cfg.sigma_i is None or cfg.sigma_q is None:
+    if not same and (cfg.sigma_i is None or cfg.sigma_q is None):
         errmsg = 'If performance_* and independence_* parameters are not identical sigmas have to be set!'
         raise ValueError(errmsg)
 
