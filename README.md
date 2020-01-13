@@ -96,8 +96,7 @@ to test several simple cases.
 Updates
 -------
 
-Update January 2020
--------------------
+### Update January 2020
 
 This update introduces changes which are NOT backward compatible with old config files!
 
@@ -390,8 +389,7 @@ Contributors
 Attribution
 -----------
 
-If you publish scientific work based on this code please consider citing some of our papers. If you want to acknowledge us consider putting this sentence in the Acknowledgments: "We thank Jan Sedlacek, Lukas Brunner, and Ruth Lorenz (ETH Zurich) for providing the ClimWIP model weighting package."
-
+If you use our code please put this (or a similar) sentence in the acknowledgments: "We thank Lukas Brunner, Ruth Lorenz, and Jan Sedlacek (ETH Zurich) for providing the ClimWIP model weighting package."
 
 License
 -------
