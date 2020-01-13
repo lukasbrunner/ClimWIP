@@ -51,9 +51,8 @@ def set_default_values(cfg):
         'independence_normalizers',
         'independence_weights',
     ]
-    # if non of them exists (old way) or all of them are None: default to the same as performance
-    if (not np.all([hasattr(cfg, param) for param in independence_parameters]) or
-        np.all([isinstance(cfg[param], type(None)) for param in independence_parameters])):
+    # if non of them exists (old way) default to the same as performance
+    if not np.all([hasattr(cfg, param) for param in independence_parameters]):
         for param in independence_parameters:
             cfg[param] = cfg[param.replace('independence_', 'performance_')]
 
@@ -307,6 +306,12 @@ def process_independence_parameters(cfg):
         'independence_normalizers',
         'independence_weights',
     ]
+
+    if cfg.independence_diagnostics is None:  # no independence weighting
+        for param in independence_parameters.keys():
+            if cfg[param] is not None:
+                raise ValueError
+        return  # all parameters contain a single None
 
     if not isinstance(cfg.independence_diagnostics, list):  # only one diagnostic
         for param in independence_parameters.keys():

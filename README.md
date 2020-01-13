@@ -356,24 +356,24 @@ performance_weights : None or float of list of floats
 
     Description: Weights to use when combining different diagnostics them. A weight of 0 means that diagnostic is ignored. The difference between setting the weight to zero and not using a diagnostic at all is the model subset, which might be different as it is always choosen so that all diagnostics (also those with zero weight) are available from all models. Has to either have same length as performance_diagnostics or be a single value. If it is a single value this value will be used for each value in performance_diagnostics.
 
-### if these variables are commented out or set to None they will be set to the same values as the corresponding performance_* variables.
-### Setting these to other values than the corresponding performance values is only allowed if the sigmas are also set!
+### If these variables are commented out they will be set to the same values as the corresponding performance_* variables.
+### Setting these to other values than the corresponding performance values is only allowed if the sigmas are also set (this is for implementation reasons only since the independence matrix is used in the perfect model test)!
 
-independence_diagnostics : string or list of strings
+independence_diagnostics : None or string or list of strings
 
-independence_aggs : string or list of strings
+independence_aggs : None or string or list of strings
 
-independence_seasons : string or list of strings
+independence_seasons : None or string or list of strings
 
-independence_masks : False or string or list of False/strings
+independence_masks : None or False or string or list of False/strings
 
-independence_regions : string or list of strings
+independence_regions : None or string or list of strings
 
-independence_startyears : integer or list of integer
+independence_startyears : None or integer or list of integer
 
-independence_endyears : integer or list of integer
+independence_endyears : None or integer or list of integer
 
-independence_normalizers : float or string or list of floats or strings
+independence_normalizers : None or float or string or list of floats or strings
 
 independence_weights : None or float list of floats
 
