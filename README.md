@@ -10,6 +10,7 @@ Content
 * [Requirements and Installation](#requirements)
 * [Setup and Data Paths](#setup)
 * [Usage and Testing](#usage)
+* [Updates](#updates)
 * [Contributors](#contributors)
 * [Attribution](#attribution)
 * [License](#license)
@@ -17,7 +18,7 @@ Content
 
 Idea and Publications
 ---------------------
-
+Brunner, L. et al. (2019): Quantifying uncertainty in European climate projections using combined performance-independence weighting. _Eniron. Res. Lett._ DOI: <a href="https://doi.org/10.1088/1748-9326/ab492f">10.1088/1748-9326/ab492f</a>
 
 Lorenz, R. et al. (2018): Prospects and caveats of weighting climate models for summer maximum temperature projections over North America. _Journal of Geophysical Research: Atmospheres_, 123, 4509–4526. DOI: <a href="http://doi.wiley.com/10.1029/2017JD027992">10.1029/2017JD027992</a>
 
@@ -35,7 +36,7 @@ To install dependencies change into the newly created directory (by default with
 <code>conda env create -f environment.yml</code>
 
 Alternatively, create a new environment and install the required packages manually. This is easiest achieved by running the following:
-<code>conda create -n ClimWIP python=3.7 xarray=0.12.2 regionmask python-cdo netCDF4</code>
+<code>conda create -n ClimWIP python=3.7 xarray=0.14.1 regionmask python-cdo netCDF4</code>
 
 Activate the environment:
 <code>conda activate ClimWIP</code>
@@ -91,6 +92,41 @@ The results will by default be saved as netCDF4 files in <code>./data</code> and
 If you are using the ETH next generation archives with the standard settings you can run
 <code>./run_all.py configs/config_default.ini</code>
 to test several simple cases.
+
+Updates
+-------
+
+Update January 2020
+-------------------
+
+This update introduces changes which are NOT backward compatible with old config files!
+
+- Change some variable names in the config file:
+  - predictor_* -> performance_*
+  - performance_masko -> performance_masks
+  - target_masko -> target_mask
+- Add some variables to the config file:
+  - performance_normalizers : None or float or string or list of float or string
+  - performance_weights : None or float or list of float
+  - independence_* : similar to performance_*
+- Change some allowed variable values in the config file:
+  - predictor_masks : bool -> string or bool
+  - predictor_* : list -> single value or list
+
+It is now possible to use different performance and independence diagnostics if the sigma values are set. Due to that change the normalization of diagnostics before combining them has changed: performance and independence diagnostics are now normalized separately (even if they are identical). This can lead to slightly different results!
+
+It is now possible to mask either land or sea or neither.
+
+It is now possible to assign weights to each diagnostic to define how much they contribute to the weights.
+
+It is now possible to use user-defined values to normalize the predictors before combining them. This can be useful when working with bootstrapping, which exchanges model variants. In the past this could lead to random changes in the normalization, which could lead to surprising results.
+
+Added the script 'search_potential_constraints.py' which takes a config file equivalent to the main script and calculates the correlation between diagnostics and the target as well as the correlation between each diagnostics pair (to exclude highly correlated diagnostics).
+
+
+Example config file
+-------------------
+
 
 
 Contributors
