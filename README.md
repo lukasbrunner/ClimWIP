@@ -186,16 +186,12 @@ overwrite : bool
 
     Description: Overwrite already existing diagnostics or calculate every time.
 
-
-# percentiles to use for the perfect model test: list of two floats (0, 1)
 percentiles : list of two floats in (0, 1)
 
     Example: .1, .9
 
     Description: Percentiles to use in the perfect model test. It will be tested how often the perfect model lies between the two percentiles.
 
-
-# inside_ratio to use for the perfect model test: None or float (0, 1) or force
     # if None: calculate as percentiles[1] - percentiles[0]
     # if force: same as None but dynamicaly relaxes the test if it fails
 inside_ratio : None or float or force
@@ -264,8 +260,6 @@ sigma_q : None or float or -99
     - float: Use given sigma value.
     - -99: Use no sigma value and set all performance weights to 1.
 
-# --- target settings ---
-# variable name: string
 target_diagnostic : string
 
     Example: tas
