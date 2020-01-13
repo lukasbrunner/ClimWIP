@@ -30,7 +30,6 @@ from core.utils_xarray import area_weighted_mean
 
 logger = logging.getLogger(__name__)
 
-
 def read_args():
     """Read the given configuration from the config file"""
     parser = argparse.ArgumentParser(
@@ -51,7 +50,7 @@ def calc_target(filenames, cfg):
     os.makedirs(base_path, exist_ok=True)
 
     targets = []
-    for model_ensemble, filename in filenames[ cfg.target_diagnostic].items():
+    for model_ensemble, filename in filenames[cfg.target_diagnostic].items():
         target = calculate_diagnostic(
             infile=filename,
             diagn=cfg.target_diagnostic,
@@ -135,7 +134,6 @@ def calc_obs(diagn, idx, cfg):
 
     varn = [*diagn.values()][0, 0] if isinstance(diagn, dict) else diagn
     diagn_key = [*diagn.keys()][0] if isinstance(diagn, dict) else diagn
-
 
     obs_list = []
     for obs_path, obs_id in zip(cfg.obs_path, cfg.obs_id):
@@ -257,14 +255,14 @@ def plot(xx, yy, obs, reg, idx, cfg):
         '.png'
     ])
 
-    plt.savefig(os.path.join('../plots/correlations/', fn), dpi=300)
+    plt.savefig(os.path.join(cfg.plot_path, fn), dpi=300)
     plt.close()
+
 
 def calc_correlation(predictor, target, obs):
 
     def _ols(xx, yy):
         return stats.linregress(xx, yy)
-
 
     def _theil_sen(xx, yy):
         return stats.theilslopes(yy, xx)
@@ -290,7 +288,7 @@ def main():
     pp = []
     for idx, diagn in enumerate(diagns):
         try:
-            logger.info(f'Process {diagn}')
+            logger.info(f'Process {diagn} {cfg.performance_aggs[idx]}')
             # small hack to get the full set of filenames for target and
             # one diagnostic (as opposed to the subset which contains all
             # diagnostics).
@@ -315,25 +313,66 @@ def main():
             r2.append(reg.rvalue**2)
             pp.append(reg.pvalue)
         except Exception:
-            r2.append('failed')
-            pp.append('failed')
+            cfg.performance_diagnostics = diagns
+            r2.append(0)
+            pp.append(9)
             logger.error(f'Unexpected error encountered in {diagn}')
             logger.error(traceback.format_exc())
 
     sort_idx = np.argsort(r2)[::-1]
 
-    print('Variable | Agg   | Period    | R2    | p')
-    print('-'*50)
+    line = ''
+    line += 'Variable | Agg        | Period    | R2    | p\n'
+    line += '-'*50 + '\n'
     for idx in sort_idx:
-        line = ' | '.join([
+        line += ' | '.join([
             f'{cfg.performance_diagnostics[idx]:<8}',
-            f'{cfg.performance_aggs[idx]:<5}',
+            f'{cfg.performance_aggs[idx]:<11}',
             f'{cfg.performance_startyears[idx]}-{cfg.performance_endyears[idx]}',
             f'{r2[idx]:.3f}',
-            f'{pp[idx]:.3f}',
+            f'{pp[idx]:.3f}\n',
         ])
-        print(line)
 
+    print(line)
+    with open(os.path.join(cfg.save_path, f'{cfg.config}_possible_constraints.txt'), 'w') as ff:
+        ff.write(line)
+
+    # now we test correlation between predictors and make a list of highly correlated predictors for each predictor
+    # (this could be done whay more elegant but I can't be bothered right now...
+    line = ''
+    for idx1, diagn1, in enumerate(diagns):
+        for idx2, diagn2 in enumerate(diagns):
+            if diagn1 == diagn2:
+                continue
+            try:
+                logger.info(f'Process {diagn1} {cfg.performance_aggs[idx1]} and {diagn2} {cfg.performance_aggs[idx2]}')
+                # now I want target and two diagnostics
+                cfg.performance_diagnostics = [diagn1, diagn2]
+                filenames, unique_models = get_filenames(cfg)
+                cfg.performance_diagnostics = diagns
+
+                predictor1 = calc_predictor(filenames, idx1, cfg)
+                predictor2 = calc_predictor(filenames, idx2, cfg)
+
+                predictor2 = predictor2.sel(model_ensemble=predictor1['model_ensemble'].data)
+                assert tuple(predictor1['model_ensemble'].data) == tuple(predictor2['model_ensemble'].data)
+
+                reg = calc_correlation(predictor1.data, predictor2.data, None)
+
+                if reg.rvalue**2 > .85:
+                    line += f'{diagn1:<10} {cfg.performance_aggs[idx1]:<5} | {diagn2:<8} {cfg.performance_aggs[idx2]:<5} | {reg.rvalue**2:.3f}\n'
+                else:
+                    pass
+                    line += f'{diagn1:<10} {cfg.performance_aggs[idx1]:<5} | {diagn2:<8} {cfg.performance_aggs[idx2]:<5} | {reg.rvalue**2:.3f}\n'
+
+            except Exception:
+                line += f'{diagn1:<10} {cfg.performance_aggs[idx1]:<5} | {diagn2:<8} {cfg.performance_aggs[idx2]:<5} | failed\n'
+                cfg.performance_diagnostics = diagns
+                logger.error(traceback.format_exc())
+
+    print(line)
+    with open(os.path.join(cfg.save_path, f'{cfg.config}_predictor_correlations.txt'), 'w') as ff:
+        ff.write(line)
 
 
 if __name__ == '__main__':
