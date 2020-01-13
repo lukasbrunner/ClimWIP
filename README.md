@@ -6,7 +6,7 @@ A collection of functions to perform Climate model Weighting by Independence and
 Content
 -------
 
-* [Idea and Publications](#idea)
+* [Key Publications](#key)
 * [Requirements and Installation](#requirements)
 * [Setup and Data Paths](#setup)
 * [Usage and Testing](#usage)
@@ -16,7 +16,7 @@ Content
 * [License](#license)
 
 
-Idea and Publications
+Key Publications
 ---------------------
 Brunner, L. et al. (2019): Quantifying uncertainty in European climate projections using combined performance-independence weighting. _Eniron. Res. Lett._ DOI: <a href="https://doi.org/10.1088/1748-9326/ab492f">10.1088/1748-9326/ab492f</a>
 
