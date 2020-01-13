@@ -129,29 +129,40 @@ Example config file
 
 model_path : string or list of strings
 
-  Example: /net/atmos/data/cmip5-ng/
+    Example: /net/atmos/data/cmip5-ng/
 
-  Description: Path(s) to the model archive(s).
+    Description: Path(s) to the model archive(s).
 
 model_id : string or list of strings
 
-  Allowed values: CMIP3, CMIP5, CMIP6, LE
+    Allowed values: CMIP3, CMIP5, CMIP6, LE
 
-  Description: Unique identifier for each model archive.
+    Description: Unique identifier for each model archive. Needs to have same lenth as model_path.
 
 model_scenario : string or list of strings
 
     Example: rcp85
 
-    Description: Identifier of the experiment.
+    Description: Identifier of the experiment. Needs to have same lenth as model_path.
 
-# - need to have the same lenght -
-# observation input path(s): None or string or list of strings
-obs_path = /net/tropo/climphys1/rlorenz/Datasets/ERAint/v0/processed/monthly/,
-# observation id(s): None or string or list of strings
-obs_id = ERA-Interim,
-# inclusion of observational uncertainty: string {range, mean, median, center, none}
-obs_uncertainty = center
+obs_path : None or string or list of strings
+
+    Example: /net/tropo/climphys1/rlorenz/Datasets/ERAint/v0/processed/monthly/,
+
+    Description: Path(s) to the observation archive(s).
+
+obs_id : None or string or list of strings
+
+    Example: ERA-Interim
+
+    Description: Unique identifier for each observational data set. Needs to have same lenth as model_path.
+
+obs_uncertainty : string
+
+    Allowed values: range, mean, median, center, none
+
+    Description: If more than one observational data set is used: how to deal with the observatinoal uncertainty.
+    - range :
 
 # output data path: string
 save_path = ../data/
