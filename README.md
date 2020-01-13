@@ -118,7 +118,7 @@ It is now possible to use different performance and independence diagnostics if 
 It is now possible to mask either land or sea or neither.
 
 It is now possible to assign weights to each diagnostic to define how much they contribute to the weights.
-
+2
 It is now possible to use user-defined values to normalize the predictors before combining them. This can be useful when working with bootstrapping, which exchanges model variants. In the past this could lead to random changes in the normalization, which could lead to surprising results.
 
 Added the script 'search_potential_constraints.py' which takes a config file equivalent to the main script and calculates the correlation between diagnostics and the target as well as the correlation between each diagnostics pair (to exclude highly correlated diagnostics).
@@ -126,6 +126,121 @@ Added the script 'search_potential_constraints.py' which takes a config file equ
 
 Example config file
 -------------------
+
+model_path : string or list of strings
+    Example: /net/atmos/data/cmip5-ng/
+    Description: Path(s) to the model archive(s).
+
+model_id : string or list of strings,
+    Allowed values: CMIP3, CMIP5, CMIP6, LE
+    Description: Unique identifier for each model archive.
+# model scenario name(s): string or list of strings
+model_scenario : string or list of strings
+    Example: rcp85
+    Description: Identifier of the experiment.
+
+# - need to have the same lenght -
+# observation input path(s): None or string or list of strings
+obs_path = /net/tropo/climphys1/rlorenz/Datasets/ERAint/v0/processed/monthly/,
+# observation id(s): None or string or list of strings
+obs_id = ERA-Interim,
+# inclusion of observational uncertainty: string {range, mean, median, center, none}
+obs_uncertainty = center
+
+# output data path: string
+save_path = ../data/
+# output path for plots: string
+plot_path = ../plots/
+
+# --- core settings ---
+# overwrite existing diagnostics: bool
+overwrite = False
+# percentiles to use for the perfect model test: list of two floats (0, 1)
+percentiles = .1, .9
+# inside_ratio to use for the perfect model test: None or float (0, 1) or force
+    # if None: calculate as percentiles[1] - percentiles[0]
+    # if force: same as None but dynamicaly relaxes the test if it fails
+inside_ratio = None
+# subset of models to use: list of model identifiers strings of form '<model>_<ensemble>_<id>'
+subset = None
+# include all initial conditions ensemble members: bool
+ensembles = True
+# use the ensemble members to establish the independence sigma: bool
+    # can only be True if ensembles is True
+ensemble_independence = True
+# how to estimate model performance: string {RMSE, <TODO>}
+# - RMSE: root mean squared error
+# performance_metric = RMSE
+# plot some intermediate results (decreases performance): bool
+plot = True
+
+idx_lats = None
+idx_lons = None
+
+# --- sigmas settings ---
+# sigma value handling: None or float > 0 or -99
+# if None: calculation via perfect model test of ensembles
+# if -99: set corresponding weights to 1
+
+# independence: small: ~all models depend on each other; large: ~all models are independent)
+sigma_i = None
+# performance: smaller is more aggressive
+# NOTE: if this is set to -99 the perfect model test will probably not yield
+# meaning full results so sigma_i should also be set manually.
+sigma_q = None
+
+# --- target settings ---
+# variable name: string
+target_diagnostic = tas
+# aggregation: string {CLIM, STD, TREND, ANOM-GLOABL, ANOM-LOCAL, CORR}
+target_agg = CLIM
+# season: string {ANN, JJA, SON, DJF, MAM}
+target_season = JJA
+# mask ocean: {None, land, sea}
+target_mask = sea
+# target region: string {GLOBAL, valid SREX region, <valid shapefiles/*.txt>}
+target_region = EUR
+# time period: integer yyyy
+target_startyear = 2031
+target_endyear = 2060
+# reference time period: None or integer yyyy
+# if not None: change from period_ref to period is the target!
+target_startyear_ref = 1951
+target_endyear_ref = 2005
+
+# --- performance settings ---
+# ! all performance_* parameters need to have same lenght !
+# same as target: string or list of strings
+performance_diagnostics = tas, pr, tas
+performance_aggs = TREND, CLIM, STD
+
+# for convenience these values will be expaned into a list of appropriate
+# length if a single string is given
+performance_seasons = JJA, DJF, ANN
+performance_masks =  land, sea, False
+performance_regions = EUR, CEU, NEU
+performance_startyears = 1981, 1981, 1981
+performance_endyears = 2010, 2010, 2010
+performance_normalizers = 'median'
+performance_weights = 1, 1, 1
+
+# # --- predictors settings ---
+# # same as performance_*
+# # Setting these to other values than the corresponding performance values is
+# # only allowed if the sigmas are also set!!!
+# # NOTE: if these parameters are not set they will default to the same values
+# # as the coresponding performance parameters. ('not set' means
+# # commenting/deleting the lines below NOT just setting them to None!)
+# independence_diagnostics = tas, pr, tas
+# independence_aggs = TREND, CLIM, STD
+# independence_seasons = JJA, DJF, ANN
+# independence_masko =  True, True, True
+# independence_regions = EUR, CEU, NEU
+# independence_startyears = 1981, 1981, 1981
+# independence_endyears = 2010, 2010, 2010
+# independence_normalizers = 'median', 'median', 'median'
+# independence_weights = 1, 1, 1
+
 
 
 
