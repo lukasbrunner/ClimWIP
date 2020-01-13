@@ -157,108 +157,231 @@ obs_id : None or string or list of strings
 
     Description: Unique identifier for each observational data set. Needs to have same lenth as model_path.
 
-obs_uncertainty : string
+obs_uncertainty : None or string
 
-    Allowed values: range, mean, median, center, none
+    Allowed values: range, mean, median, center, None
 
     Description: If more than one observational data set is used: how to deal with the observatinoal uncertainty.
-    - range :
+    - range : All values within the full range of the observations get assigned zero distance.
+    - mean: The mean of all observational data sets is used as reference.
+    - median: The median of all observational data sets is used as reference.
+    - center: The center [0.5*(max + min)] of all observational data sets is used as reference.
+    - None: Only allowed if only one observational data set is used.
 
-# output data path: string
-save_path = ../data/
-# output path for plots: string
-plot_path = ../plots/
+save_path : string
 
-# --- core settings ---
-# overwrite existing diagnostics: bool
-overwrite = False
+    Example: ../data/
+
+    Description: Path to save temp files and final output file. Has to exist and be writable.
+
+plot_path : string
+
+    Example: ../plots/
+
+    Description: Path to save plots.
+
+overwrite : bool
+
+    Example: False
+
+    Description: Overwrite already existing diagnostics or calculate every time.
+
+
 # percentiles to use for the perfect model test: list of two floats (0, 1)
-percentiles = .1, .9
+percentiles : list of two floats in (0, 1)
+
+    Example: .1, .9
+
+    Description: Percentiles to use in the perfect model test. It will be tested how often the perfect model lies between the two percentiles.
+
+
 # inside_ratio to use for the perfect model test: None or float (0, 1) or force
     # if None: calculate as percentiles[1] - percentiles[0]
     # if force: same as None but dynamicaly relaxes the test if it fails
-inside_ratio = None
-# subset of models to use: list of model identifiers strings of form '<model>_<ensemble>_<id>'
-subset = None
-# include all initial conditions ensemble members: bool
-ensembles = True
-# use the ensemble members to establish the independence sigma: bool
-    # can only be True if ensembles is True
-ensemble_independence = True
-# how to estimate model performance: string {RMSE, <TODO>}
-# - RMSE: root mean squared error
-# performance_metric = RMSE
-# plot some intermediate results (decreases performance): bool
-plot = True
+inside_ratio : None or float or force
 
-idx_lats = None
-idx_lons = None
+    Example: .8
 
-# --- sigmas settings ---
-# sigma value handling: None or float > 0 or -99
-# if None: calculation via perfect model test of ensembles
-# if -99: set corresponding weights to 1
+    Description: It will be tested for which sigma value the perfect model lies between the two percentiles at least this often.
+    - None: Value will be calculated on the fly as percentiles[1] - percentiles[0]
+    - force: Same as None but if no sigma value can be found to fulfil the perfect model test this will be relaxed.
 
-# independence: small: ~all models depend on each other; large: ~all models are independent)
-sigma_i = None
-# performance: smaller is more aggressive
-# NOTE: if this is set to -99 the perfect model test will probably not yield
-# meaning full results so sigma_i should also be set manually.
-sigma_q = None
+subset : None or list of strings
+
+    Pattern: <model>_<ensemble>_<id>
+
+    Description: If not None use onle the models specified here. If not all models specified here can be found a Value Error will be raised in order to make sure all models specified are used.
+
+ensembles : bool
+
+    Example: True
+
+    Description: Use all ensemble members or onle the first one (using natsort, so r1* will be used in stead of r10*).
+
+ensemble_independence : bool
+
+    Example: True
+
+    Description: Can only be True if ensemble is True. If True use an alternative approach to calculate the independence sigma based on ensemble member similarity (see appendix of Brunner et al. 2019)
+
+performance_metric: string, optional
+
+    Default: RMSE
+
+    Allowed values: RMSE
+
+    Description: Metric used to establish model performance and independence.
+
+plot : bool
+
+    Example: True
+
+    Description: Plot some intermediate results (decreases performance).
+
+idx_lats : None or float or list of float, optional
+
+    Example: None
+
+idx_lons : None or float or list of float, optional
+
+    Example: None
+
+sigma_i : None or float > 0 or -99
+
+    Example: None
+
+    Description: Independence sigma value handling
+    - None: Calculate the sigma value via perfect model test.
+    - float: Use given sigma value.
+    - -99: Use no sigma value and set all independence weights to 1.
+
+sigma_q : None or float or -99
+
+    Example: None
+
+    Description: Performance sigma value handling
+    - None: Calculate the sigma value via perfect model test.
+    - float: Use given sigma value.
+    - -99: Use no sigma value and set all performance weights to 1.
 
 # --- target settings ---
 # variable name: string
-target_diagnostic = tas
-# aggregation: string {CLIM, STD, TREND, ANOM-GLOABL, ANOM-LOCAL, CORR}
-target_agg = CLIM
-# season: string {ANN, JJA, SON, DJF, MAM}
-target_season = JJA
-# mask ocean: {None, land, sea}
-target_mask = sea
-# target region: string {GLOBAL, valid SREX region, <valid shapefiles/*.txt>}
-target_region = EUR
-# time period: integer yyyy
-target_startyear = 2031
-target_endyear = 2060
-# reference time period: None or integer yyyy
-# if not None: change from period_ref to period is the target!
-target_startyear_ref = 1951
-target_endyear_ref = 2005
+target_diagnostic : string
 
-# --- performance settings ---
-# ! all performance_* parameters need to have same lenght !
-# same as target: string or list of strings
-performance_diagnostics = tas, pr, tas
-performance_aggs = TREND, CLIM, STD
+    Example: tas
 
-# for convenience these values will be expaned into a list of appropriate
-# length if a single string is given
-performance_seasons = JJA, DJF, ANN
-performance_masks =  land, sea, False
-performance_regions = EUR, CEU, NEU
-performance_startyears = 1981, 1981, 1981
-performance_endyears = 2010, 2010, 2010
-performance_normalizers = 'median'
-performance_weights = 1, 1, 1
+    Description: Variable identifyer of the target diagnostic. Has to be in the model archive.
 
-# # --- predictors settings ---
-# # same as performance_*
-# # Setting these to other values than the corresponding performance values is
-# # only allowed if the sigmas are also set!!!
-# # NOTE: if these parameters are not set they will default to the same values
-# # as the coresponding performance parameters. ('not set' means
-# # commenting/deleting the lines below NOT just setting them to None!)
-# independence_diagnostics = tas, pr, tas
-# independence_aggs = TREND, CLIM, STD
-# independence_seasons = JJA, DJF, ANN
-# independence_masko =  True, True, True
-# independence_regions = EUR, CEU, NEU
-# independence_startyears = 1981, 1981, 1981
-# independence_endyears = 2010, 2010, 2010
-# independence_normalizers = 'median', 'median', 'median'
-# independence_weights = 1, 1, 1
+target_gag : string
 
+    Allowed values: CLIM, STD, TREND, ANOM-GLOABL, ANOM-LOCAL, CORR
 
+    Description: Time aggregation of the target variable.
+
+target_season : string
+
+    Allowed values: ANN, JJA, SON, DJF, MAM
+
+    Description: Season to use or annual.
+
+target_mask : False or sea or land
+
+    Allowed values: False, sea, land
+
+    Description: Mask applied to the target variable.
+
+target_region : string
+
+    Example: GLOBAL
+
+    Description: Region to use. Can either be GLOBAL or a valid SREX region or a region which is definde in the shapefiles folder as 'target_region.txt'.
+
+target_startyear : integer
+
+    Example 2080
+
+    Description: Beginning of the time period to consider for the target variable.
+
+target_endyear : integer
+
+    Example:2099
+
+    Description: End of the time period to consider of the target variable.
+
+target_startyear_ref : None or integer
+
+    Example: 1995
+
+    Description: Beginning of the reference time period for the target variable. If None no reference period is used if not None the difference between the target period and the reference period will be used.
+
+target_endyear_ref : None or integer
+
+    Example: 2014
+
+    Description: End of the reference time period for the target variable.
+
+performance_diagnostics : string or list of strings
+
+    Example: tas, pr, tas
+
+performance_aggs : string or list of strings
+
+    Example: TREND, CLIM, STD
+
+    Description: Has to have same length as performance_diagnostics
+
+performance_seasons : string or list of strings
+
+    Description: Has to either have same length as performance_diagnostics or be a single value. If it is a single value this value will be used for each value in performance_diagnostics.
+
+performance_masks : False or string or list of False/strings
+
+    Description: Has to either have same length as performance_diagnostics or be a single value. If it is a single value this value will be used for each value in performance_diagnostics.
+
+performance_regions : string or list of strings
+
+    Description: Has to either have same length as performance_diagnostics or be a single value. If it is a single value this value will be used for each value in performance_diagnostics.
+
+performance_startyears : integer or list of integers
+
+    Description: Has to either have same length as performance_diagnostics or be a single value. If it is a single value this value will be used for each value in performance_diagnostics.
+
+performance_endyears : integer or list of integers
+
+    Description: Has to either have same length as performance_diagnostics or be a single value. If it is a single value this value will be used for each value in performance_diagnostics.
+
+performance_normalizers : string of float or list of strings or floats
+
+    Allowed values: median, mean, center, <list of floats>
+
+    Description: Metric to normalize different diagnostics before combining them. Has to either have same length as performance_diagnostics or be a single value. If it is a single value this value will be used for each value in performance_diagnostics.
+
+performance_weights : None or float of list of floats
+
+    Example: 1, 1.5, 0
+
+    Description: Weights to use when combining different diagnostics them. A weight of 0 means that diagnostic is ignored. The difference between setting the weight to zero and not using a diagnostic at all is the model subset, which might be different as it is always choosen so that all diagnostics (also those with zero weight) are available from all models. Has to either have same length as performance_diagnostics or be a single value. If it is a single value this value will be used for each value in performance_diagnostics.
+
+## if these variables are commented out or set to None they will be set to the same values as the corresponding performance_* variables.
+## Setting these to other values than the corresponding performance values is only allowed if the sigmas are also set!
+
+independence_diagnostics : string or list of strings
+
+independence_aggs : string or list of strings
+
+independence_seasons : string or list of strings
+
+independence_masks : False or string or list of False/strings
+
+independence_regions : string or list of strings
+
+independence_startyears : integer or list of integer
+
+independence_endyears : integer or list of integer
+
+independence_normalizers : float or string or list of floats or strings
+
+independence_weights : None or float list of floats
 
 
 Contributors
