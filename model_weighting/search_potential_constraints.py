@@ -363,7 +363,7 @@ def main():
                     line += f'{diagn1:<10} {cfg.performance_aggs[idx1]:<5} | {diagn2:<8} {cfg.performance_aggs[idx2]:<5} | {reg.rvalue**2:.3f}\n'
                 else:
                     pass
-                    line += f'{diagn1:<10} {cfg.performance_aggs[idx1]:<5} | {diagn2:<8} {cfg.performance_aggs[idx2]:<5} | {reg.rvalue**2:.3f}\n'
+                    # line += f'{diagn1:<10} {cfg.performance_aggs[idx1]:<5} | {diagn2:<8} {cfg.performance_aggs[idx2]:<5} | {reg.rvalue**2:.3f}\n'
 
             except Exception:
                 line += f'{diagn1:<10} {cfg.performance_aggs[idx1]:<5} | {diagn2:<8} {cfg.performance_aggs[idx2]:<5} | failed\n'
