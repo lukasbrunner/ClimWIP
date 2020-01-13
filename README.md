@@ -128,15 +128,21 @@ Example config file
 -------------------
 
 model_path : string or list of strings
+
     Example: /net/atmos/data/cmip5-ng/
+
     Description: Path(s) to the model archive(s).
 
-model_id : string or list of strings,
+model_id : string or list of strings
+
     Allowed values: CMIP3, CMIP5, CMIP6, LE
+
     Description: Unique identifier for each model archive.
-# model scenario name(s): string or list of strings
+
 model_scenario : string or list of strings
+
     Example: rcp85
+
     Description: Identifier of the experiment.
 
 # - need to have the same lenght -
