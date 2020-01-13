@@ -301,9 +301,9 @@ def calc_performance(filenames, cfg):
 
         # --- plot map of each difference ---
         # takes a long time -> only commend in if needed
-        # if cfg.plot:
-        #     with utils.LogTime('Plotting maps', level='info'):
-        #         plot_maps(diff, idx, cfg)
+        if cfg.plot:
+            with utils.LogTime('Plotting maps', level='info'):
+                plot_maps(diff, idx, cfg)
         # ---------------------------------------
 
         diff = np.sqrt(area_weighted_mean(diff**2))

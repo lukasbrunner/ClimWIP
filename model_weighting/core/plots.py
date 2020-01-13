@@ -168,9 +168,9 @@ def plot_maps(ds, idx, cfg):
     cfg : object
         Config object
     """
-    agg = cfg.predictor_aggs[idx]
-    syear = cfg.predictor_startyears[idx]
-    eyear = cfg.predictor_endyears[idx]
+    agg = cfg.performance_aggs[idx]
+    syear = cfg.performance_startyears[idx]
+    eyear = cfg.performance_endyears[idx]
 
     path = os.path.join(cfg.plot_path, cfg.config, 'maps')
     os.makedirs(path, exist_ok=True)

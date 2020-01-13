@@ -264,6 +264,7 @@ def calculate_basic_diagnostic(infile, varn,
     except ValueError:
         pass
 
+    da = standardize_units(da, varn)
     da = flip_antimeridian(da)
     assert np.all(da['lat'].data == np.arange(-88.75, 90., 2.5))
     assert np.all(da['lon'].data == np.arange(-178.75, 180., 2.5))
@@ -283,9 +284,9 @@ def calculate_basic_diagnostic(infile, varn,
     elif mask_land_sea == 'sea':
         sea_mask = regionmask.defined_regions.natural_earth.land_110.mask(da) == 0
         da = da.where(sea_mask)
-    elif maks_land_sea == 'land':
-        sea_mask = regionmask.defined_regions.natural_earth.land_110.mask(da) == 1
-        da = da.where(sea_mask)
+    elif mask_land_sea == 'land':
+        land_mask = np.isnan(regionmask.defined_regions.natural_earth.land_110.mask(da))
+        da = da.where(land_mask)
 
     if time_aggregation == 'ANOM-GLOBAL':
         da_mean = da.groupby('time.year').mean('time', skipna=False)
@@ -336,7 +337,6 @@ def calculate_basic_diagnostic(infile, varn,
             # end program if only nan (i.e., ocean with mask)
             sys.exit(f'{idx_lats, idx_lons} contains only nan')
 
-    da = standardize_units(da, varn)
     attrs = da.attrs
 
     with warnings.catch_warnings():
@@ -437,7 +437,9 @@ def calculate_diagnostic(infile, diagn, base_path, **kwargs):
             outfile = os.path.join(base_path, '_'.join([
                 '{infile}_{time_period[0]}-{time_period[1]}_{season}',
                 '{time_aggregation}_{region}_{masked}.nc']).format(
-                    masked=kwargs['mask_land_sea'] if not isinstance(kwargs['mask_land_sea'], bool) else 'unmasked',
+                    masked=(
+                        kwargs['mask_land_sea'] + 'masked'
+                        if not isinstance(kwargs['mask_land_sea'], bool) else 'unmasked'),
                     **kwargs))
         else:
             str_ = '_'.join(['-'.join(map(str, kwargs['idx_lats'])),
@@ -446,7 +448,9 @@ def calculate_diagnostic(infile, diagn, base_path, **kwargs):
                 '{infile}_{time_period[0]}-{time_period[1]}_{season}',
                 '{time_aggregation}_{region}_{masked}_{str_}.nc']).format(
                     str_=str_,
-                    masked=kwargs['mask_land_sea'] if isinstance(kwargs['mask_land_sea'], bool) else 'unmasked',
+                    masked=(
+                        kwargs['mask_land_sea'] + 'masked'
+                        if not isinstance(kwargs['mask_land_sea'], bool) else 'unmasked'),
                     **kwargs))
         return outfile
 
