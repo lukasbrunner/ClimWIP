@@ -360,19 +360,19 @@ performance_weights : None or float of list of floats
 ### If these variables are commented out they will be set to the same values as the corresponding performance_* variables.
 ### Setting these to other values than the corresponding performance values is only allowed if the sigmas are also set (this is for implementation reasons only since the independence matrix is used in the perfect model test)!
 
-independence_diagnostics : None or string or list of strings
+independence_diagnostics : string or list of strings
 
-independence_aggs : None or string or list of strings
+independence_aggs : string or list of strings
 
-independence_seasons : None or string or list of strings
+independence_seasons : string or list of strings
 
-independence_masks : None or False or string or list of False/strings
+independence_masks : False or string or list of False/strings
 
-independence_regions : None or string or list of strings
+independence_regions : string or list of strings
 
-independence_startyears : None or integer or list of integer
+independence_startyears : integer or list of integer
 
-independence_endyears : None or integer or list of integer
+independence_endyears : integer or list of integer
 
 independence_normalizers : None or float or string or list of floats or strings
 
