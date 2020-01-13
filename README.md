@@ -6,9 +6,9 @@ A collection of functions to perform Climate model Weighting by Independence and
 Content
 -------
 
-* [Key Publications](#key_publications)
+* [Key Publications](#key-publications)
 * [Requirements and Installation](#requirements)
-* [Setup and Data Paths](#setup_and_data_paths)
+* [Setup and Data Paths](#setup-and-data-paths)
 * [Usage and Testing](#usage)
 * [Updates](#updates)
 * [Contributors](#contributors)
