@@ -8,7 +8,7 @@ Content
 
 * [Key Publications](#key_publications)
 * [Requirements and Installation](#requirements)
-* [Setup and Data Paths](#setup)
+* [Setup and Data Paths](#setup_and_data_paths)
 * [Usage and Testing](#usage)
 * [Updates](#updates)
 * [Contributors](#contributors)
