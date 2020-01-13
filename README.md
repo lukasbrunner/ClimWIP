@@ -127,6 +127,8 @@ Added the script 'search_potential_constraints.py' which takes a config file equ
 Example config file
 -------------------
 
+For an example file also look into model_weighting/configs/config_default.ini!
+
 model_path : string or list of strings
 
     Example: /net/atmos/data/cmip5-ng/
