@@ -32,6 +32,7 @@ archive, you might need to change things here.
 import os
 import glob
 import logging
+import warnings
 import numpy as np
 from natsort import natsorted, ns
 
@@ -141,7 +142,9 @@ def select_variants(common_model_ensembles, variants_use, variants_select):
         model = model_ensemble.split('_')[0] + '_' + model_ensemble.split('_')[2]
 
         # check how many variants of the model are already selected (and add)
-        nr_variants = np.atleast_1d(np.array(selected_models) == model).sum()
+        with warnings.catch_warnings():
+            warnings.simplefilter(action='ignore', category=FutureWarning)
+            nr_variants = sum([mm == model for mm in selected_models])
         if nr_variants < variants_use:
             selected_models.append(model)
             selected_model_ensembles.append(model_ensemble)
@@ -244,7 +247,5 @@ def get_filenames(cfg):
     logger.info(f'{len(selected_model_ensembles)} runs selected')
     logger.info(', '.join(selected_models))
     logger.info(', '.join(selected_model_ensembles))
-
-    import sys; sys.exit()
 
     return filenames, np.array(selected_models)
