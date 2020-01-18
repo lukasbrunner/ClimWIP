@@ -134,7 +134,7 @@ def standardize_units(da, varn):
         newunit = "degC"
         if unit == newunit:
             pass
-        elif unit == 'K':
+        elif unit in ['K', 'Kelvin']:
             da.data -= 273.15
             da.attrs['units'] = newunit
         elif unit.lower() in ['degc', 'deg_c', 'celsius', 'degreec',
