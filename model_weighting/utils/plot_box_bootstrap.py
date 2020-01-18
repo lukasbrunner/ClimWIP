@@ -50,8 +50,13 @@ def read_input():
 def preprocess(ds):
     ds = ds.drop_dims('perfect_model_ensemble')
     model_ensemble =  ds['model_ensemble'].data
-    model = [mm.split('_')[0] for mm in  model_ensemble]
-    ds['model'] = xr.DataArray(model, dims='model_ensemble')
+    models = [mm.split('_')[0] for mm in  model_ensemble]
+    _, idxs, counts = np.unique(models, return_counts=True, return_index=True)
+    for idx, count in zip(idxs, counts):
+        for idx_variant in range(count):
+            models[idx+idx_variant] = models[idx+idx_variant] + f'_{idx_variant}'
+
+    ds['model'] = xr.DataArray(models, dims='model_ensemble')
     ds = ds.swap_dims({'model_ensemble': 'model'})
     ds = ds.drop_vars('model_ensemble')
     ds = area_weighted_mean(ds)
@@ -80,8 +85,8 @@ def main():
     for idx in ds['realization'].data:
         ds_sel = ds.sel(realization=idx)
 
-        percentiles.append(list(quantile(ds_sel[varn].data, (.05, .25, .5, .75, .95))) + [np.average(ds_sel[varn].data)])
-        percentiles_w.append(list(quantile(ds_sel[varn].data, (.05, .25, .5, .75, .95), ds_sel['weights'].data))
+        percentiles.append(list(quantile(ds_sel[varn].data, (.1, .25, .5, .75, .9))) + [np.average(ds_sel[varn].data)])
+        percentiles_w.append(list(quantile(ds_sel[varn].data, (.1, .25, .5, .75, .9), ds_sel['weights'].data))
                              + [np.average(ds_sel[varn].data, weights=ds_sel['weights'].data)])
 
         if args.unweighted:
@@ -90,7 +95,7 @@ def main():
                 median=ds_sel[varn],
                 mean=ds_sel[varn],
                 box=ds_sel[varn],
-                whis=ds_sel[varn],  # (ds_sel[varn].min(), ds_sel[varn].max()),
+                whis=quantile(ds_sel[varn].data, (.1, .9)),
                 width=.8,
                 color=sns.xkcd_rgb['greyish'],
                 alpha=.3,
@@ -104,7 +109,7 @@ def main():
             median=ds_sel[varn],
             mean=ds_sel[varn],
             box=ds_sel[varn],
-            whis=ds_sel[varn],
+            whis=quantile(ds_sel[varn].data, (.1, .9), ds_sel['weights']),
             weights=ds_sel['weights'],
             width=.6,
             color=sns.xkcd_rgb['greyish'],
@@ -156,7 +161,7 @@ def main():
             median=ds_mean[varn],
             mean=ds_mean[varn],
             box=ds_mean[varn],
-            whis=ds_mean[varn],  # (ds_mean[varn].min(), ds_mean[varn].max()),
+            whis=quantile(ds_mean[varn].data, (.1, .9)),
             width=.8,
             color=sns.xkcd_rgb['greyish'],
             alpha=.3,
@@ -170,7 +175,7 @@ def main():
         median=ds_mean[varn],
         mean=ds_mean[varn],
         box=ds_mean[varn],
-        whis=ds_mean[varn],
+        whis=quantile(ds_mean[varn].data, (.1, .9), ds_mean['weights']),
         weights=ds_mean['weights'],
         width=.6,
         color=sns.xkcd_rgb['greyish'],
@@ -186,6 +191,8 @@ def main():
     xticklabels = xticklabels + ['P-mean', 'W-mean']
     ax.set_xticks(xticks)
     ax.set_xticklabels(xticklabels, rotation=30, ha='right')
+
+    ax.set_ylim(2, 6)
 
     try:
         unit = f' ({ds[varn].attrs["units"]})'

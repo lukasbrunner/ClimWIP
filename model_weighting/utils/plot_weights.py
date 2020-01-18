@@ -47,8 +47,14 @@ def read_input():
 def preprocess(ds):
     ds = ds['weights'].to_dataset(name='weights')
     model_ensemble =  ds['model_ensemble'].data
-    model = [mm.split('_')[0] for mm in  model_ensemble]
-    ds['model'] = xr.DataArray(model, dims='model_ensemble')
+    models = [mm.split('_')[0] for mm in  model_ensemble]
+
+    _, idxs, counts = np.unique(models, return_counts=True, return_index=True)
+    for idx, count in zip(idxs, counts):
+        for idx_variant in range(count):
+            models[idx+idx_variant] = models[idx+idx_variant] + f'_{idx_variant}'
+
+    ds['model'] = xr.DataArray(models, dims='model_ensemble')
     ds = ds.swap_dims({'model_ensemble': 'model'})
     return ds
 
@@ -87,7 +93,7 @@ def main():
         xticklabels.append(f'{model} ({nr})')
 
     ax.set_xticks(range(len(ds['model'])))
-    ax.set_xticklabels(xticklabels, rotation=45, ha='right', fontsize='small')
+    ax.set_xticklabels(xticklabels, rotation=45, ha='right', fontsize='x-small')
 
     ax.set_ylabel('Weights (1)')
     ax.grid(axis='y')
