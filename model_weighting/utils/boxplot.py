@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2020-01-15 13:52:20 lukbrunn>
+Time-stamp: <2020-01-18 15:50:45 lukas>
 
 (c) 2019 under a MIT License (https://mit-license.org)
 
@@ -224,11 +224,11 @@ def boxplot(ax,
         median = quantile(median, .5, weights)
     if box is not None and len(box) != 2 and not isinstance(box, tuple):
         box = quantile(box, (.25, .75), weights)
-    elif box == (None, None):
+    elif tuple(box) == (None, None):
         box = None
     if whis is not None and len(whis) != 2 and not isinstance(whis, tuple):
         whis = quantile(whis, (.05, .95), weights)
-    elif whis == (None, None):
+    elif tuple(whis) == (None, None):
         whis = None
 
     if pos is None:
