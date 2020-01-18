@@ -33,6 +33,7 @@ import os
 import glob
 import logging
 import numpy as np
+from natsort import natsorted, ns
 
 logger = logging.getLogger(__name__)
 
@@ -81,12 +82,72 @@ def get_filenames_var(varn, id_, scenario, base_path):
     return {get_model_from_filename(fn, id_): fn for fn in filenames}
 
 
-def get_unique_filenames(filenames, unique_models):
+def get_filenames_variants(filenames, unique_models):
     """Return only one filename per model"""
     for varn in filenames.keys():
         filenames[varn] = {unique_model: filenames[varn][unique_model]
                            for unique_model in unique_models}
     return filenames
+
+
+def select_variants(common_model_ensembles, variants_use, variants_select):
+    """
+    Select the given number of variants of the same model (if avaliable).
+
+    Parameters
+    ----------
+    common_model_ensembles : list of strings of form <model_ensemble_ID>
+    variants_use : integer > 0 or 'all'
+        The number of variants of the same model to use. This is an upper
+        limit, if less variants are available all of them will be used
+        (but they will not be repeated to reach the maximum number!).
+        Setting this to 'all' has the same effect as setting it to a very
+        high number (i.e., higher than the maximum number of variants for any
+        given model).
+    variants_select : {'natsorted', 'sorted', 'random'}
+        The sorting strategy for model variants.
+        * sorted: Sort using the Python buildin sorted() function. This was
+          the original sorting strategy but leads to unexpected sorting:
+          [r10i*, r11i*, r1i*, ...]
+        * natsorted: Sort using the natsort.natsorted function:
+          [r1i*, r10i*, r11i*, ...]
+        * random: Do not sort but pick random members. This can be used for
+          bootstrapping of model variants:
+          [r24i*, r7i*, r13i*, ...]
+
+    Returns
+    -------
+    selected_models : list of strings of from <model_ID>
+        A list of unique models selected sorted by ID and model name.
+    selected_model_ensembles : list of strings of from <model_ensemble_ID>
+        A list of all models and model variants selected sorted by ID, model
+        name, and variant.
+    """
+    if variants_use == 'all':
+        variants_use = 999
+    assert isinstance(variants_use, int) and variants_use > 0
+
+    if variants_select == 'sorted':
+        common_model_ensembles = sorted(common_model_ensembles)
+    elif variants_select == 'natsorted':
+        common_model_ensembles = natsorted(common_model_ensembles)
+    elif variants_select == 'random':
+        np.random.shuffle(common_model_ensembles)
+
+    selected_models = []
+    selected_model_ensembles = []
+    for model_ensemble in common_model_ensembles:
+        # extract model_ID (without variant information)
+        model = model_ensemble.split('_')[0] + '_' + model_ensemble.split('_')[2]
+
+        # check how many variants of the model are already selected (and add)
+        nr_variants = np.atleast_1d(np.array(selected_models) == model).sum()
+        if nr_variants < variants_use:
+            selected_models.append(model)
+            selected_model_ensembles.append(model_ensemble)
+
+    return (natsorted(natsorted(np.unique(selected_models), alg=ns.IC), key=lambda x: x.split('_')[1]),
+            natsorted(natsorted(selected_model_ensembles, alg=ns.IC), key=lambda x: x.split('_')[2]))
 
 
 def get_filenames(cfg):
@@ -137,6 +198,9 @@ def get_filenames(cfg):
 
     varns = np.unique(varns)  # we need each variable only once
 
+    # common_model_ensembles: a list of model_ensemble_ID which are available for all variables
+    # filenames: a nested list of filenames[varn][model_ensemble_ID] = filename
+    # available of all variables
     filenames = {}
     for varn in varns:  # get all files for all variables first
         filenames[varn] = {}
@@ -144,13 +208,13 @@ def get_filenames(cfg):
             filenames[varn].update(get_filenames_var(varn, id_, scenario, base_path))
 
         try:
-            common_models = list(
-                np.intersect1d(common_models, list(filenames[varn].keys())))
+            common_model_ensembles = list(
+                np.intersect1d(common_model_ensembles, list(filenames[varn].keys())))
         except NameError:
-            common_models = list(filenames[varn].keys())
+            common_model_ensembles = list(filenames[varn].keys())
 
     for varn in varns:  # delete models not available for all variables
-        delete_models = np.setdiff1d(list(filenames[varn].keys()), common_models)
+        delete_models = np.setdiff1d(list(filenames[varn].keys()), common_model_ensembles)
         for delete_model in delete_models:
             filenames[varn].pop(delete_model)
 
@@ -167,22 +231,20 @@ def get_filenames(cfg):
 
     if cfg.subset is not None:
         for delete_model in delete_models:
-            common_models.remove(delete_model)
+            common_model_ensembles.remove(delete_model)
 
-    unique_models = []
-    unique_common_models = []
-    for model_ensemble in common_models:
-        model = model_ensemble.split('_')[0] + '_' + model_ensemble.split('_')[2]
-        if model not in unique_models:
-            unique_models.append(model)
-            unique_common_models.append(model_ensemble)
 
-    if not cfg.ensembles:
-        filenames = get_unique_filenames(filenames, unique_common_models)
+    selected_models, selected_model_ensembles = select_variants(
+        common_model_ensembles, cfg.variants_use, cfg.variants_select)
 
-    logger.info(f'{len(unique_common_models)} models found')
-    logger.info(f'{len(filenames[varns[0]])} runs selected')
-    logger.info(f', '.join(sorted(unique_models, key=lambda x: x.split('_')[1])))
-    logger.info(', '.join(filenames[varns[0]].keys()))
+    if cfg.variants_use != 'all':
+        filenames = get_filenames_variants(filenames, selected_model_ensembles)
 
-    return filenames, np.array(unique_common_models)
+    logger.info(f'{len(selected_models)} models found')
+    logger.info(f'{len(selected_model_ensembles)} runs selected')
+    logger.info(', '.join(selected_models))
+    logger.info(', '.join(selected_model_ensembles))
+
+    import sys; sys.exit()
+
+    return filenames, np.array(selected_models)

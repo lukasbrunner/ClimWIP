@@ -301,9 +301,9 @@ def calc_performance(filenames, cfg):
 
         # --- plot map of each difference ---
         # takes a long time -> only commend in if needed
-        if cfg.plot:
-            with utils.LogTime('Plotting maps', level='info'):
-                plot_maps(diff, idx, cfg)
+        # if cfg.plot:
+        #     with utils.LogTime('Plotting maps', level='info'):
+        #         plot_maps(diff, idx, cfg)
         # ---------------------------------------
 
         diff = np.sqrt(area_weighted_mean(diff**2))
@@ -412,7 +412,7 @@ def _normalize(data, normalize_by):
         assert normalize_by < np.nanmax(data) * 10
         normalizer = normalize_by
     except ValueError:
-        if normalize_by.lower() == 'middle':
+        if normalize_by.lower() == 'center':
             normalizer = .5*(np.nanmin(data) + np.nanmax(data))
         elif normalize_by.lower() == 'median':
             normalizer = np.nanmedian(data)
@@ -610,7 +610,7 @@ def calc_sigmas(targets, delta_i, unique_models, cfg, n_sigmas=50):
     targets_1ens_mean = area_weighted_mean(targets_1ens, latn='lat', lonn='lon').data
 
     # use the initial-condition members to estimate sigma_i
-    if cfg.ensemble_independence:
+    if cfg.variants_independence:
         sigmas_i = independence_sigma(delta_i, sigmas_i)
         idx_i_min = 0
     else:
@@ -642,7 +642,7 @@ def calc_sigmas(targets, delta_i, unique_models, cfg, n_sigmas=50):
         else:
             raise ValueError(logmsg)
 
-    if cfg.ensemble_independence:
+    if cfg.variants_independence:
         idx_q_min = np.argmin(1-inside_ok[:, idx_i_min])
     else:
         # find the element with the smallest sum i+j which is True

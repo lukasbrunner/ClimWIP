@@ -104,13 +104,17 @@ This update introduces changes which are NOT backward compatible with old config
   - predictor_* -> performance_*
   - performance_masko -> performance_masks
   - target_masko -> target_mask
+  - ensembles -> variants_use
+  - ensemble_independence -> variantes_inddependence
 - Add some variables to the config file:
   - performance_normalizers : None or float or string or list of float or string
   - performance_weights : None or float or list of float
   - independence_* : similar to performance_*
+  - variants_select : string
 - Change some allowed variable values in the config file:
   - predictor_masks : bool -> string or bool
   - predictor_* : list -> single value or list
+  - ensembles : bool -> integer > 0 or 'all'
 
 It is now possible to use different performance and independence diagnostics if the sigma values are set. Due to that change the normalization of diagnostics before combining them has changed: performance and independence diagnostics are now normalized separately (even if they are identical). This can lead to slightly different results!
 
@@ -119,6 +123,8 @@ It is now possible to mask either land or sea or neither.
 It is now possible to assign weights to each diagnostic to define how much they contribute to the weights.
 2
 It is now possible to use user-defined values to normalize the predictors before combining them. This can be useful when working with bootstrapping, which exchanges model variants. In the past this could lead to random changes in the normalization, which could lead to surprising results.
+
+It is not possible to give a maximum number of variants to use per model instead of a bool indicating all or only one variant. In addition the new parameter variants_select specifies how to sort variants before selection (the first xx will be used).
 
 Added the script 'search_potential_constraints.py' which takes a config file equivalent to the main script and calculates the correlation between diagnostics and the target as well as the correlation between each diagnostics pair (to exclude highly correlated diagnostics).
 
@@ -209,17 +215,26 @@ subset : None or list of strings
 
     Description: If not None use onle the models specified here. If not all models specified here can be found a Value Error will be raised in order to make sure all models specified are used.
 
-ensembles : bool
+variants_use : integer > 0 or all
+
+    Example: all
+
+    Description: Use all ensemble members or only up to a maximum number given by this parameter.
+
+variants_select: string
+
+    Allowed values: sorted, natsorted, random
+
+    Description: Specify the sorting strategy applied to model variante before selecting the frist xx (given by variants_use) variants.
+    - sorted: Sort using the Python buildin sorted() function. This was the original sorting strategy but leads to potentially unexpected sorting: [r10i*, r11i*, r1i*, ...]
+    - natsorted: Sort using the natsort.natsorted function: [r1i*, r10i*, r11i*, ...]
+    - random: Do not sort but pick random members. This can be used for bootstrapping of model variants: [r24i*, r7i*, r13i*, ...]
+
+variants_independence : bool
 
     Example: True
 
-    Description: Use all ensemble members or onle the first one (using natsort, so r1* will be used in stead of r10*).
-
-ensemble_independence : bool
-
-    Example: True
-
-    Description: Can only be True if ensemble is True. If True use an alternative approach to calculate the independence sigma based on ensemble member similarity (see appendix of Brunner et al. 2019)
+    Description: Can only be True if variants_use is not 1. If True use an alternative approach to calculate the independence sigma based on ensemble member similarity (see appendix of Brunner et al. 2019)
 
 performance_metric: string, optional
 

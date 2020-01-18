@@ -59,8 +59,9 @@ def set_default_values(cfg):
 
 def process_other_parameters(cfg):
     other_parameters = {
-        'ensembles': bool,
-        'ensemble_independence': bool,
+        'variants_use': (int, str),
+        'variants_select': str,
+        'variants_independence': bool,
         'idx_lats': (int, type(None)),
         'idx_lons': (int, type(None)),
         'inside_ratio': (float, str, type(None)),
@@ -74,14 +75,17 @@ def process_other_parameters(cfg):
     }
 
     for param in other_parameters:
-        if param == 'ensembles':
+        if param == 'variants_use':
             if not isinstance(cfg[param], other_parameters[param]):
                 raise ValueError
-        elif param == 'ensemble_independence':
+        elif param == 'variants_independence':
             if not isinstance(cfg[param], other_parameters[param]):
                 raise ValueError
-            if cfg['ensemble_independence'] and not cfg['ensembles']:
-                raise ValueError('Can not use ensemble_independence without ensembles')
+            if cfg['variants_independence'] and cfg['variants_use'] == 1:
+                raise ValueError('Can not use variants_independence without variants')
+        elif param == 'variants_select':
+            if cfg[param] not in ['sorted', 'natsorted', 'random']:
+                raise ValueError
 
         elif param in ['idx_lats', 'idx_lons']:
             if not isinstance(cfg[param], other_parameters[param]):
@@ -378,6 +382,10 @@ def check_perfect_model_test(cfg):
 
     if not same and (cfg.sigma_i is None or cfg.sigma_q is None):
         errmsg = 'If performance_* and independence_* parameters are not identical sigmas have to be set!'
+        raise ValueError(errmsg)
+
+    if not same and cfg.obs_id is None:
+        errmsg = 'If performance_* and independence_* parameters are not identical obs_id has to be set!'
         raise ValueError(errmsg)
 
 

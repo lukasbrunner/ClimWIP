@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-09-27 17:11:14 lukbrunn>
+Time-stamp: <2020-01-15 15:42:20 lukbrunn>
 
 (c) 2019 under a MIT License (https://mit-license.org)
 
@@ -43,9 +43,18 @@ def read_input():
         '--title', '-t', dest='title', type=str, default=None,
         help='')
     parser.add_argument(
+        '--labels', '-l', dest='labels', default=None,
+        type=lambda x: x.split(', '),
+        help='')
+    parser.add_argument(
         '--savename', '-s', dest='savename', type=str, default=None,
         help='')
     args = parser.parse_args()
+
+    if args.labels is not None and len(args.labels) != len(args.filenames):
+        logmsg = '--labels needs to have same length as filenames! Falling back to default'
+        args.labels = None
+        print(logmsg)
     return args
 
 
@@ -82,7 +91,7 @@ def main():
         if args.unweighted:
             h1 = boxplot(
                 ax, xx,
-                # median=median,
+                median=ds[varn],
                 mean=ds[varn],
                 box=ds[varn],
                 whis=ds[varn],  # (ds[varn].min(), ds[varn].max()),
@@ -96,7 +105,7 @@ def main():
 
         h2 = boxplot(
             ax, xx,
-            # median=ds[varn],
+            median=ds[varn],
             mean=ds[varn],
             box=ds[varn],
             whis=ds[varn],
@@ -110,7 +119,10 @@ def main():
         )
 
     ax.set_xticks(xticks)
-    ax.set_xticklabels(xticklabels, rotation=30, ha='right')
+    if args.labels is not None:
+        ax.set_xticklabels(args.labels, rotation=30, ha='right')
+    else:
+        ax.set_xticklabels(xticklabels, rotation=30, ha='right')
 
     try:
         unit = f' ({ds[varn].attrs["units"]})'
