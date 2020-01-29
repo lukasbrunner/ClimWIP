@@ -237,37 +237,15 @@ def process_other_parameters(cfg):
     }
 
     for param in other_parameters:
-        if param == 'variants_use':
-            if not isinstance(cfg[param], other_parameters[param]):
-                raise ValueError
-        elif param == 'variants_independence':
-            if not isinstance(cfg[param], other_parameters[param]):
-                raise ValueError
+        if param == 'variants_independence':
             if cfg['variants_independence'] and cfg['variants_use'] == 1:
                 raise ValueError('Can not use variants_independence without variants')
-        elif param == 'variants_select':
-            if cfg[param] not in ['sorted', 'natsorted', 'random']:
-                raise ValueError
-
-        elif param in ['idx_lats', 'idx_lons']:
-            if not isinstance(cfg[param], other_parameters[param]):
-                raise ValueError
-
-        elif param == 'overwrite':
-            if not isinstance(cfg[param], other_parameters[param]):
-                raise ValueError
-
         elif param == 'percentiles':
-            if not np.all([isinstance(value, other_parameters[param])
-                           for value in cfg[param]]):
-                raise ValueError
             if not np.all((value > 0) & (value < 1) for value in cfg[param]):
                 raise ValueError
             if not len(cfg[param]) == 2:
                 raise ValueError
         elif param == 'inside_ratio':
-            if not isinstance(cfg[param], other_parameters[param]):
-                raise ValueError
             if cfg[param] is None:
                 cfg[param] = cfg['percentiles'][1] - cfg['percentiles'][0]
             elif cfg[param] == 'force':
@@ -276,32 +254,17 @@ def process_other_parameters(cfg):
                 raise ValueError
 
         elif param == 'performance_metric':
-            if not isinstance(cfg[param], other_parameters[param]):
-                raise ValueError
             if not cfg[param] in ['RMSE']:
                 raise ValueError
 
-        elif param == 'plot':
-            if not isinstance(cfg[param], other_parameters[param]):
-                raise ValueError
         elif param == 'plot_path':
-            if not isinstance(cfg[param], other_parameters[param]):
-                raise ValueError
             if cfg['plot']:
                 if cfg['plot_path'] is None:
                     raise ValueError
                 if not os.access(cfg.plot_path, os.W_OK | os.X_OK):
                     raise ValueError('plot_path is not writable')
 
-        elif param == 'subset':
-            if cfg[param] is not None:
-                if not np.all([isinstance(value, other_parameters[param])
-                               for value in cfg[param]]):
-                    raise ValueError
-
         elif param == 'save_path':
-            if not isinstance(cfg[param], other_parameters[param]):
-                raise ValueError
             if not os.access(cfg.plot_path, os.W_OK | os.X_OK):
                 raise ValueError('save_path is not writable')
 
