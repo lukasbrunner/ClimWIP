@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-07-17 18:44:38 lukbrunn>
+Time-stamp: <2020-01-29 12:04:01 lukbrunn>
 
 (c) 2019 under a MIT License (https://mit-license.org)
 
@@ -18,93 +18,7 @@ from matplotlib.collections import PatchCollection
 from matplotlib.patches import Rectangle
 import matplotlib.patches as mpatches
 
-
-def quantile(data, quantiles, weights=None, interpolation='linear',
-             old_style=False):
-    """Calculates weighted quantiles.
-
-    Parameters:
-    - data (np.array): Array of data (N,)
-    - quantiles (np.array): Array of quantiles (M,) in [0, 1]
-    - weights=None (np.array, optional): Array of weights (N,)
-    - interpolation='linear' (str, optional): String giving the interpolation
-      method (equivalent to np.percentile). "This optional parameter specifies
-      the interpolation method to use when the desired quantile lies between
-      two data points." One of (with i < j):
-      * linear: i + (j - i) * fraction where fraction is the fractional part
-        of the index surrounded by i and j
-      * lower: i  NOTE: might lead to unexpected results for integers (see
-        tests/test_math.test_quantile_interpolation)
-      * higher: j  NOTE: might lead to unexpected results for integers
-      * nearest: i or j whichever is nearest
-      * midpoint: (i + j) / 2. TODO: not yet implemented!
-    - old_style=False (bool, optional): If True, will correct output to be
-      consistent with np.percentile.
-
-    Returns:
-    np.array of shape (M,)"""
-    data = np.array(data)
-    quantiles = np.array(quantiles)
-    if np.any(np.isnan(data)):
-        errmsg = ' '.join([
-            'This function is not tested with missing data! Comment this test',
-            'if you want to use it anyway.'])
-        raise ValueError(errmsg)
-    if data.ndim != 1:
-        errmsg = 'data should have shape (N,) not {}'.format(data.shape)
-        raise ValueError(errmsg)
-    if np.any(quantiles < 0.) or np.any(quantiles > 1.):
-        errmsg = 'quantiles should be in [0, 1] not {}'.format(quantiles)
-        raise ValueError(errmsg)
-    if weights is None:
-        weights = np.ones_like(data)
-    else:
-        weights = np.array(weights)
-        if data.shape != weights.shape:
-            errmsg = ' '.join([
-                'weights need to have the same shape as data ',
-                '({} != {})'.format(weights.shape, data.shape)])
-            raise ValueError(errmsg)
-        # remove values with weights zero
-        idx = np.where(weights == 0)[0]
-        weights = np.delete(weights, idx)
-        data = np.delete(data, idx)
-
-    sorter = np.argsort(data)
-    data = data[sorter]
-    weights = weights[sorter]
-
-    weighted_quantiles = np.cumsum(weights) - .5*weights
-
-    if old_style:  # consistent with np.percentile
-        weighted_quantiles -= weighted_quantiles[0]
-        weighted_quantiles /= weighted_quantiles[-1]
-    else:  # more correct (see reference for a discussion)
-        weighted_quantiles /= np.sum(weights)
-
-    results = np.interp(quantiles, weighted_quantiles, data)
-
-    if interpolation == 'linear':
-        return results
-    elif interpolation == 'lower':
-        if isinstance(results, float):
-            return data[data<=results][-1]
-        return np.array([data[data<=rr][-1] for rr in results])
-    elif interpolation == 'higher':
-        if isinstance(results, float):
-            return data[data>=results][0]
-        return np.array([data[data>=rr][0] for rr in results])
-    elif interpolation == 'nearest':
-        if isinstance(results, float):
-            return data[np.argmin(np.abs(data - results))]
-        return np.array([data[np.argmin(np.abs(data - rr))] for rr in results])
-    elif interpolation == 'midpoint':
-        raise NotImplementedError
-    else:
-        errmsg = ' '.join([
-            'interpolation has to be one of [linear | lower | higher |',
-            'nearest | midpoint] and not {}'.format(interpolation)])
-        raise ValueError(errmsg)
+from model_weighting.core.utils_xarray import quantile
 
 
 def boxplot(ax,
@@ -122,6 +36,8 @@ def boxplot(ax,
             fancy_legend=False,
             return_handle=False,
             zorder=100,
+            box_quantiles=(.25, .75),
+            whis_quantiles=(.05, .95),
             median_kwargs=None,
             mean_kwargs=None,
             whis_kwargs=None):
@@ -171,12 +87,12 @@ def boxplot(ax,
     if median is not None and not isinstance(median, (int, float)):
         median = quantile(median, .5, weights)
     if box is not None and len(box) != 2 and not isinstance(box, tuple):
-        box = quantile(box, (.25, .75), weights)
-    elif box == (None, None):
+        box = quantile(box, box_quantiles, weights)
+    elif tuple(box) == (None, None):
         box = None
     if whis is not None and len(whis) != 2 and not isinstance(whis, tuple):
-        whis = quantile(whis, (.05, .95), weights)
-    elif whis == (None, None):
+        whis = quantile(whis, whis_quantiles, weights)
+    elif whis is not None and tuple(whis) == (None, None):
         whis = None
 
     if pos is None:
@@ -215,11 +131,13 @@ def boxplot(ax,
         if median is not None:
             mean_kwargs['linestyle'] = '--'
 
-    l1 = mpatches.Patch(color=color, alpha=alpha)
-    l2 = ax.hlines([], [], [], **median_kwargs)
-    l3 = ax.hlines([], [], [], **mean_kwargs)
+    handle = [mpatches.Patch(color=color, alpha=alpha)]
+    if median is not None:
+        handle.append(ax.hlines([], [], [], **median_kwargs))
+    if mean is not None:
+        handle.append(ax.hlines([], [], [], **mean_kwargs))
     if return_handle:
-        return (l1, l2, l3)
+        return tuple(handle)
 
     x0, x1 = pos - .5*width, pos + .5*width
     if box is not None:  # plot box
@@ -249,4 +167,4 @@ def boxplot(ax,
             x0, x1 = pos - .5*caps_width*width, pos + .5*caps_width*width
             ax.hlines(whis, (x0, x0), (x1, x1), zorder=zorder, **whis_kwargs)
 
-    return (l1, l2, l3)
+    return tuple(handle)

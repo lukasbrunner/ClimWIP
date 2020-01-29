@@ -32,7 +32,9 @@ archive, you might need to change things here.
 import os
 import glob
 import logging
+import warnings
 import numpy as np
+from natsort import natsorted, ns
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +83,7 @@ def get_filenames_var(varn, id_, scenario, base_path):
     return {get_model_from_filename(fn, id_): fn for fn in filenames}
 
 
-def get_unique_filenames(filenames, unique_models):
+def get_filenames_variants(filenames, unique_models):
     """Return only one filename per model"""
     for varn in filenames.keys():
         filenames[varn] = {unique_model: filenames[varn][unique_model]
@@ -89,7 +91,69 @@ def get_unique_filenames(filenames, unique_models):
     return filenames
 
 
-def get_filenames(varns, ids, scenarios, base_paths, all_members, subset=None):
+def select_variants(common_model_ensembles, variants_use, variants_select):
+    """
+    Select the given number of variants of the same model (if avaliable).
+
+    Parameters
+    ----------
+    common_model_ensembles : list of strings of form <model_ensemble_ID>
+    variants_use : integer > 0 or 'all'
+        The number of variants of the same model to use. This is an upper
+        limit, if less variants are available all of them will be used
+        (but they will not be repeated to reach the maximum number!).
+        Setting this to 'all' has the same effect as setting it to a very
+        high number (i.e., higher than the maximum number of variants for any
+        given model).
+    variants_select : {'natsorted', 'sorted', 'random'}
+        The sorting strategy for model variants.
+        * sorted: Sort using the Python buildin sorted() function. This was
+          the original sorting strategy but leads to unexpected sorting:
+          [r10i*, r11i*, r1i*, ...]
+        * natsorted: Sort using the natsort.natsorted function:
+          [r1i*, r10i*, r11i*, ...]
+        * random: Do not sort but pick random members. This can be used for
+          bootstrapping of model variants:
+          [r24i*, r7i*, r13i*, ...]
+
+    Returns
+    -------
+    selected_models : list of strings of from <model_ID>
+        A list of unique models selected sorted by ID and model name.
+    selected_model_ensembles : list of strings of from <model_ensemble_ID>
+        A list of all models and model variants selected sorted by ID, model
+        name, and variant.
+    """
+    if variants_use == 'all':
+        variants_use = 999
+    assert isinstance(variants_use, int) and variants_use > 0
+
+    if variants_select == 'sorted':
+        common_model_ensembles = sorted(common_model_ensembles)
+    elif variants_select == 'natsorted':
+        common_model_ensembles = natsorted(common_model_ensembles)
+    elif variants_select == 'random':
+        np.random.shuffle(common_model_ensembles)
+
+    selected_models = []
+    selected_model_ensembles = []
+    for model_ensemble in common_model_ensembles:
+        # extract model_ID (without variant information)
+        model = model_ensemble.split('_')[0] + '_' + model_ensemble.split('_')[2]
+
+        # check how many variants of the model are already selected (and add)
+        with warnings.catch_warnings():
+            warnings.simplefilter(action='ignore', category=FutureWarning)
+            nr_variants = sum([mm == model for mm in selected_models])
+        if nr_variants < variants_use:
+            selected_models.append(model)
+            selected_model_ensembles.append(model_ensemble)
+
+    return (natsorted(natsorted(np.unique(selected_models), alg=ns.IC), key=lambda x: x.split('_')[1]),
+            natsorted(natsorted(selected_model_ensembles, alg=ns.IC), key=lambda x: x.split('_')[2]))
+
+
+def get_filenames(cfg):
     """
     Collects all filenames matching the set criteria.
 
@@ -99,23 +163,7 @@ def get_filenames(varns, ids, scenarios, base_paths, all_members, subset=None):
 
     Parameters
     ----------
-    varns : list of strings
-        A list of valid CMIP5 variable names.
-    ids : string or list of strings {'CMIP6', 'CMIP5', 'CMIP3'}
-        Valid model IDs.
-    scenarios : string or list of strings
-        Valid scenarios. Must have same length as ids.
-    base_paths : string or list of strings
-        Base paths of the model archives. Must have same length as ids.
-    all_members : bool
-        If False only one initial-condition member per model will be used.
-        Note that due to sorting this might not necessarily be the first
-        (i.e., the r1i1p1) member (but rather, e.g., r10i1p1).
-    subset : None or list of strings
-        If not None must be a list of valid model identifyers (e.g.,
-        ['CESM12_r1i1pi_CMIP5']). If one of the models available for all
-        variables a ValueError will be raised to ensure that all models in the
-        list are included.
+    cfg : config object
 
     Returns
     -------
@@ -131,61 +179,72 @@ def get_filenames(varns, ids, scenarios, base_paths, all_members, subset=None):
         effect as setting all_members=False. This is indented for use in the
         perfect model test.
     """
+    # get basic variables for diagnostics
+    varns = []
+    if cfg.performance_diagnostics is not None:
+        for varn in cfg.performance_diagnostics:
+            if isinstance(varn, dict):  # multi-variable diagnostic
+                varns.append([*varn.values()][0, 0])
+                varns.append([*varn.values()][0, 1])
+            else:
+                varns.append(varn)
+    if cfg.independence_diagnostics is not None:
+        for varn in cfg.independence_diagnostics:
+            if isinstance(varn, dict):
+                varns.append([*varn.values()][0, 0])
+                varns.append([*varn.values()][0, 1])
+            else:
+                varns.append(varn)
+    if cfg.target_diagnostic is not None:
+        # only if sigmas are None we need to calculate the target
+        varns += [cfg.target_diagnostic]
 
-    if isinstance(ids, str):
-        ids = [ids]
-    if isinstance(scenarios, str):
-        scenarios = [scenarios]
-    if isinstance(base_paths, str):
-        base_paths = [base_paths]
-    if len(ids) != len(scenarios) or len(ids) != len(base_paths):
-        raise ValueError('ids, scenarios, and base_paths need to have same lenght')
+    varns = np.unique(varns)  # we need each variable only once
+
+    # common_model_ensembles: a list of model_ensemble_ID which are available for all variables
+    # filenames: a nested list of filenames[varn][model_ensemble_ID] = filename
+    # available of all variables
     filenames = {}
     for varn in varns:  # get all files for all variables first
         filenames[varn] = {}
-        for id_, scenario, base_path in zip(ids, scenarios, base_paths):
+        for id_, scenario, base_path in zip(cfg.model_id, cfg.model_scenario, cfg.model_path):
             filenames[varn].update(get_filenames_var(varn, id_, scenario, base_path))
 
         try:
-            common_models = list(
-                np.intersect1d(common_models, list(filenames[varn].keys())))
+            common_model_ensembles = list(
+                np.intersect1d(common_model_ensembles, list(filenames[varn].keys())))
         except NameError:
-            common_models = list(filenames[varn].keys())
+            common_model_ensembles = list(filenames[varn].keys())
 
     for varn in varns:  # delete models not available for all variables
-        delete_models = np.setdiff1d(list(filenames[varn].keys()), common_models)
+        delete_models = np.setdiff1d(list(filenames[varn].keys()), common_model_ensembles)
         for delete_model in delete_models:
             filenames[varn].pop(delete_model)
 
-        if subset is not None:
-            if not set(subset).issubset(list(filenames[varn].keys())):
-                missing = set(subset).difference(list(filenames[varn].keys()))
+        if cfg.subset is not None:
+            if not set(cfg.subset).issubset(list(filenames[varn].keys())):
+                missing = set(cfg.subset).difference(list(filenames[varn].keys()))
                 errmsg = ' '.join(['subset is not None but these models in',
                                    'subset were found for all variables:',
                                    ', '.join(missing)])
                 raise ValueError(errmsg)
-            delete_models = np.setdiff1d(list(filenames[varn].keys()), subset)
+            delete_models = np.setdiff1d(list(filenames[varn].keys()), cfg.subset)
             for delete_model in delete_models:
                 filenames[varn].pop(delete_model)
 
-    if subset is not None:
+    if cfg.subset is not None:
         for delete_model in delete_models:
-            common_models.remove(delete_model)
+            common_model_ensembles.remove(delete_model)
 
-    unique_models = []
-    unique_common_models = []
-    for model_ensemble in common_models:
-        model = model_ensemble.split('_')[0] + '_' + model_ensemble.split('_')[2]
-        if model not in unique_models:
-            unique_models.append(model)
-            unique_common_models.append(model_ensemble)
+    selected_models, selected_model_ensembles = select_variants(
+        common_model_ensembles, cfg.variants_use, cfg.variants_select)
 
-    if not all_members:
-        filenames = get_unique_filenames(filenames, unique_common_models)
+    if cfg.variants_use != 'all':
+        filenames = get_filenames_variants(filenames, selected_model_ensembles)
 
-    logger.info(f'{len(unique_common_models)} models found')
-    logger.info(f'{len(filenames[varns[0]])} runs selected')
-    logger.info(f', '.join(sorted(unique_models, key=lambda x: x.split('_')[1])))
-    logger.info(', '.join(filenames[varns[0]].keys()))
+    logger.info(f'{len(selected_models)} models found')
+    logger.info(f'{len(selected_model_ensembles)} runs selected')
+    logger.info(', '.join(selected_models))
+    logger.info(', '.join(selected_model_ensembles))
 
-    return filenames, np.array(unique_common_models)
+    return filenames, np.array(selected_model_ensembles)

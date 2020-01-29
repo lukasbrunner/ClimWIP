@@ -32,6 +32,7 @@ for more information.
 import numpy as np
 
 from .utils_xarray import quantile
+from utils_python.math import quantile as quantile2
 
 
 def weighted_quantile(values, weights, quantiles):
@@ -62,12 +63,11 @@ def weighted_quantile(values, weights, quantiles):
     - the last dimension of 'weights' needs to be normalized
     - quantiles needs to have len = 2 (upper and lower quantile)
     - one weight should be zero (perfect model test)
-
     """
     values = np.array(values)
     weights = np.array(weights)
     quantiles = np.array(quantiles)
-    assert np.isclose(weights.sum(), 1., atol=.0001)
+    assert np.isclose(weights.sum(), 1., atol=1.e-4)
     assert quantiles.size == 2
     assert quantiles[0] < quantiles[1]
     assert len(weights[weights < 1.e-10]) >= 1, 'at least perfect model weight should be 0'
@@ -119,7 +119,7 @@ def perfect_model_test(data, weights_sigmas, perc_lower, perc_upper):
     """
     tmp = weighted_quantile(data, weights_sigmas, (perc_lower, perc_upper))
     assert np.all(tmp[..., 0] <= tmp[..., 1])
-    errmsg = 'Lower and upper percentile equivalent! Too strong weighting?'
-    assert not np.any(np.isclose(tmp[..., 1] - tmp[..., 0], 0, atol=1.e-5)), errmsg
+    # errmsg = 'Lower and upper percentile equivalent! Too strong weighting?'
+    # assert not np.any(np.isclose(tmp[..., 1] - tmp[..., 0], 0, atol=1.e-7)), errmsg
     inside = (tmp[..., 0] <= data) & (data <= tmp[..., 1])
     return inside.sum(axis=-1) / float(inside.shape[-1])

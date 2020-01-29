@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-09-27 17:11:14 lukbrunn>
+Time-stamp: <2020-01-20 10:05:08 lukbrunn>
 
 (c) 2019 under a MIT License (https://mit-license.org)
 
@@ -43,9 +43,22 @@ def read_input():
         '--title', '-t', dest='title', type=str, default=None,
         help='')
     parser.add_argument(
+        '--labels', '-l', dest='labels', default=None,
+        type=lambda x: x.split(', '),
+        help='')
+    parser.add_argument(
         '--savename', '-s', dest='savename', type=str, default=None,
         help='')
+    parser.add_argument(
+        '--ylim', dest='ylim', default=None,
+        type=lambda x: x.split(', '),
+        help='')
     args = parser.parse_args()
+
+    if args.labels is not None and len(args.labels) != len(args.filenames):
+        logmsg = '--labels needs to have same length as filenames! Falling back to default'
+        args.labels = None
+        print(logmsg)
     return args
 
 
@@ -82,10 +95,11 @@ def main():
         if args.unweighted:
             h1 = boxplot(
                 ax, xx,
-                # median=median,
+                median=ds[varn],
                 mean=ds[varn],
                 box=ds[varn],
-                whis=ds[varn],  # (ds[varn].min(), ds[varn].max()),
+                whis=ds[varn],
+                # whis_quantiles=(.1, .9),
                 width=.8,
                 color=sns.xkcd_rgb['greyish'],
                 alpha=.3,
@@ -96,11 +110,12 @@ def main():
 
         h2 = boxplot(
             ax, xx,
-            # median=ds[varn],
+            median=ds[varn],
             mean=ds[varn],
             box=ds[varn],
             whis=ds[varn],
             weights=ds['weights'],
+            # whis_quantiles=(.1, .9),
             width=.6,
             color=sns.xkcd_rgb['greyish'],
             alpha=1,
@@ -110,7 +125,10 @@ def main():
         )
 
     ax.set_xticks(xticks)
-    ax.set_xticklabels(xticklabels, rotation=30, ha='right')
+    if args.labels is not None:
+        ax.set_xticklabels(args.labels, rotation=30, ha='right')
+    else:
+        ax.set_xticklabels(xticklabels, rotation=30, ha='right')
 
     try:
         unit = f' ({ds[varn].attrs["units"]})'
@@ -118,6 +136,9 @@ def main():
         unit = ''
     ax.set_ylabel(f'{varn}{unit}')
     ax.grid(axis='y')
+
+    if args.ylim is not None:
+        ax.set_ylim((float(args.ylim[0]), float(args.ylim[1])))
 
     if args.unweighted:
         plt.legend((h1, h2), ('unweighted', 'weighted'))

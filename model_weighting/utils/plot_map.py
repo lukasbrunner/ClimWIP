@@ -23,6 +23,7 @@ Authors
 
 Abstract
 --------
+Plot a map with the difference between the weighted and unweighted mean.
 """
 import os
 import warnings
@@ -38,29 +39,33 @@ from matplotlib.collections import PatchCollection
 from matplotlib.patches import Polygon
 
 DATAPATH = '../../data/ModelWeighting/'
-PLOTPATH = '../../plots/ModelWeighting/maps/'
+PLOTPATH = '../../plots/maps/'
 
 
 def get_plot_config(varn, region):
     if varn == 'tas':
         return (
             dict(
-                vmin=-.4,
-                vmax=.4,
                 cmap='RdBu_r',
-                levels=np.concatenate((np.arange(-.4, 0, .1), np.arange(.1, .41, .1))),
                 extend='both',
+                center=0,
+                robust=True,
+                levels=11
+                # vmin=-.6,
+                # vmax=.6,
+                # levels=np.concatenate((np.arange(-.6, 0, .1), np.arange(.1, .61, .1))),
+
             ),
             '\n'.join([f'{region} temperature difference (K)',
                        'hatching: 90% significance (1000 member bootstrap)']))
     elif varn == 'pr':
         return (
             dict(
-                vmin=None,
-                vmax=None,
                 cmap='BrBG',
-                levels=np.concatenate((np.arange(-30., 0, 7.5), np.arange(7.5, 31., 7.5))),
                 extend='both',
+                center=0,
+                robust=True,
+                levels=11
             ),
             '\n'.join([f'{region} relative precipitation difference (%)',
                        'hatching: 90% significance (1000 member bootstrap)']))
@@ -167,7 +172,7 @@ def hatching(ax, lat, lon, condition, hatch='/////', force=False, wrap_lon=False
     ax.add_collection(pp)
 
 
-def plot_map(ds, title, kwargs, filename=None):
+def plot_map(ds, title, kwargs, global_, filename=None):
     proj = ccrs.PlateCarree(central_longitude=0)
     fig, ax = plt.subplots(subplot_kw={'projection': proj})
 
@@ -181,27 +186,31 @@ def plot_map(ds, title, kwargs, filename=None):
     )
 
     ax.coastlines()
-    # ax.add_feature(cartopy.feature.BORDERS)
 
     longitude_formatter = LongitudeFormatter()
     latitude_formatter = LatitudeFormatter()
+    if global_:
+        ax.set_xticks(np.arange(-180, 181, 60), crs=proj)
+        ax.set_yticks(np.arange(-90, 91, 30), crs=proj)
+        ax.xaxis.set_ticks_position('both')
+        ax.yaxis.set_ticks_position('both')
+        ax.xaxis.set_major_formatter(longitude_formatter)
+        ax.yaxis.set_major_formatter(latitude_formatter)
+    else:
+        ax.set_xticks(np.arange(np.floor(ds['lon'].min()), ds['lon'].max(), 10), crs=proj)
+        ax.set_yticks(np.arange(np.floor(ds['lat'].min()), ds['lat'].max(), 10), crs=proj)
+        ax.xaxis.set_ticks_position('both')
+        ax.yaxis.set_ticks_position('both')
+        ax.xaxis.set_major_formatter(longitude_formatter)
+        ax.yaxis.set_major_formatter(latitude_formatter)
 
-    # ax.set_xticks(np.arange(np.floor(da['lon'].min()), da['lon'].max(), 10), crs=proj)
-    # ax.set_yticks(np.arange(np.floor(da['lat'].min()), da['lat'].max(), 10), crs=proj)
-    ax.set_xticks(np.arange(-10, 50, 20))
-    ax.set_yticks(np.arange(30, 80, 15))
-    ax.set_xlim(-12, 48)
-    ax.set_ylim(26, 76)
-    ax.xaxis.set_ticks_position('both')
-    ax.yaxis.set_ticks_position('both')
-    ax.xaxis.set_major_formatter(longitude_formatter)
-    ax.yaxis.set_major_formatter(latitude_formatter)
     ax.set_xlabel('')
     ax.set_ylabel('')
     # ax.grid(True, zorder=-1)
     ax.set_title(title)
 
-    hatching(ax, ds['lat'], ds['lon'], ds['significant'], force=True)
+    if 'significant' in ds:
+        hatching(ax, ds['lat'], ds['lon'], ds['significant'], force=True)
 
 
 def main():
@@ -216,18 +225,22 @@ def main():
         help=' '.join([
             'A valid plot extension specifiying the file type. A special case',
             'is "show" which will call plt.show() instead of saving']))
+    parser.add_argument(
+        '--no-hatching', '-nh', dest='hatch', action='store_false',
+        help='')
     args = parser.parse_args()
+
     ds = xr.open_dataset(os.path.join(DATAPATH, args.filename))
 
-    # TODO: will be inferable from the global attributes in the future
-    varn = 'pr'
-    region = 'EU'
+    varn = ds.attrs['target']
+    region = ds.attrs['region']
     relative = True if varn in ['pr'] else False
 
     preprocess(ds, varn, relative=relative)
-    bootstrap(ds, varn, relative=relative)
+    if args.hatch:
+        bootstrap(ds, varn, relative=relative)
     plot_kwargs, title = get_plot_config(varn, region)
-    plot_map(ds, title, plot_kwargs)
+    plot_map(ds, title, plot_kwargs, region == 'GLOBAL')
 
     if args.ext == 'show':
         plt.show()

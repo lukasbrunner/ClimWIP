@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2019-10-11 09:17:55 lukbrunn>
+Time-stamp: <2020-01-29 12:01:58 lukbrunn>
 
 (c) 2019 under a MIT License (https://mit-license.org)
 
@@ -17,19 +17,16 @@ import argparse
 import warnings
 import numpy as np
 import xarray as xr
-import matplotlib as mpl
 import regionmask
-#mpl.use('Agg')
 import matplotlib.pyplot as plt
-import seaborn as sns
-from properscoring import crps_ensemble
 
 from model_weighting.core.utils import read_config, log_parser
 from model_weighting.core.utils_xarray import area_weighted_mean, quantile, flip_antimeridian
+from boxplot import boxplot
 
 warnings.filterwarnings('ignore')
 
-quantile = np.vectorize(quantile, signature='(n)->()', excluded=[1, 'weights', 'interpolation', 'old_style'])
+quantile = np.vectorize(quantile, signature='(n)->()', excluded=[1, 'weights'])
 period_ref = slice('1995', '2014')
 
 PLOTPATH = os.path.join(
@@ -76,10 +73,11 @@ def read_models(ds, nan_mask, cfg, change):
             ds_var2 = xr.open_dataset(filename, use_cftime=True)
             ds_var = xr.concat([ds_var2, ds_var], dim='time')
 
-        ds_var = ds_var.drop(['height', 'file_qf'], errors='ignore')
+        ds_var = ds_var.drop_vars(['height', 'file_qf'], errors='ignore')
 
-        ds_var = ds_var.isel(time=ds_var['time.season'] == cfg.target_season)
-        ds_var = ds_var.sel(time=slice('1950', '2100'))
+        if cfg.target_season != 'ANN':
+            ds_var = ds_var.isel(time=ds_var['time.season'] == cfg.target_season)
+        ds_var = ds_var.sel(time=slice('1950', '2099'))
         ds_var = ds_var.groupby('time.year').mean('time')
 
         ds_var = flip_antimeridian(ds_var)
@@ -106,24 +104,25 @@ def read_obs(ds, cfg, change):
     if cfg.obs_id is None:
         return None, None
 
-    if isinstance(cfg.obs_id, str):
+    if not isinstance(cfg.obs_id, list):
         cfg.obs_id = [cfg.obs_id]
         cfg.obs_path = [cfg.obs_path]
 
     ds_list = []
     for obs_path, obs_id in zip(cfg.obs_path, cfg.obs_id):
-
         filename = os.path.join(obs_path, '{}_mon_{}_g025.nc'.format(cfg.target_diagnostic, obs_id))
-        ds_var = xr.open_dataset(filename, use_cftime=True)[cfg.target_diagnostic]
+        ds_var = xr.open_dataset(filename, use_cftime=True).load()[cfg.target_diagnostic]
 
-        if obs_id in ['CESM2', 'CESM2-2', 'CESM2-3']:
+        try:
             filename = os.path.join(obs_path, '{}_mon_{}_g025_future.nc'.format(cfg.target_diagnostic, obs_id))
-            ds_var2 = xr.open_dataset(filename, use_cftime=True)[cfg.target_diagnostic]
-
+            ds_var2 = xr.open_dataset(filename, use_cftime=True).load()[cfg.target_diagnostic]
             ds_var = xr.concat([ds_var, ds_var2], dim='time')
+        except FileNotFoundError:
+            pass
 
-        ds_var = ds_var.isel(time=ds_var['time.season'] == cfg.target_season)
-        if len(obs_id) > 1:
+        if cfg.target_season != 'ANN':
+            ds_var = ds_var.isel(time=ds_var['time.season'] == cfg.target_season)
+        if len(cfg.obs_id) > 1:
             ds_var = ds_var.sel(time=period_ref)
         ds_var = ds_var.groupby('time.year').mean('time')
 
@@ -138,8 +137,12 @@ def read_obs(ds, cfg, change):
 
     ds_var = xr.concat(ds_list, dim='dataset')
 
-    sea_mask = regionmask.defined_regions.natural_earth.land_110.mask(ds_var, wrap_lon=180) == 0
-    ds_var = ds_var.where(sea_mask)
+    if cfg.target_mask == 'sea':
+        sea_mask = regionmask.defined_regions.natural_earth.land_110.mask(ds_var, wrap_lon=180) == 0
+        ds_var = ds_var.where(sea_mask)
+    elif cfg.target_mask == 'land':
+        land_mask = regionmask.defined_regions.natural_earth.land_110.mask(ds_var, wrap_lon=180) == 1
+        ds_var = ds_var.where(land_mask)
 
     nan_mask = np.isnan(ds_var.mean('year', skipna=False).mean('dataset', skipna=False))
     ds_var = ds_var.where(~nan_mask)
@@ -156,8 +159,8 @@ def read_obs(ds, cfg, change):
 
 def plot(ds_models, ds_obs, weights, args, ds):
 
-    fig, ax = plt.subplots(figsize=(7, 4))
-    fig.subplots_adjust(left=.08, right=.97, top=.99)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    fig.subplots_adjust(left=.07, right=.99, top=.98)
 
     def plot_shading(yy1, yy2, xx=ds_models['year'].data, color='gray', alpha=.3, **kwargs):
         return ax.fill_between(
@@ -175,6 +178,22 @@ def plot(ds_models, ds_obs, weights, args, ds):
             lw=lw,
             zorder=1000,
             **kwargs)[0]
+
+    def plot_box(yy, xx, weights=None, color='gray', alpha=.3, period=('2080', '2099')):
+        boxplot(
+            ax, xx,
+            # median=yy.sel(year=slice(*period)).mean('year'),
+            mean=yy.sel(year=slice(*period)).mean('year'),
+            box=yy.sel(year=slice(*period)).mean('year'),
+            whis=yy.sel(year=slice(*period)).mean('year'),
+            width=4,
+            color=color,
+            alpha=alpha,
+            weights=weights,
+            # median_kwargs={'alpha': 1., 'color': color, 'linewidth': 2.},
+            mean_kwargs={'alpha': 1., 'color': color, 'linewidth': 2.},
+            whis_kwargs={'caps_width': .6},
+        )
 
     handles = []
     labels = []
@@ -211,29 +230,44 @@ def plot(ds_models, ds_obs, weights, args, ds):
     handles.append((h1, h2))
     labels.append('Weighted mean & interquartile')
 
+    # --- boxes ---
+    plot_box(ds_models, 2105)
+    plot_box(ds_models, 2110, weights=weights.data, color='darkred')
+
+    mean = ds_obs.sel(year=slice('2080', '2099')).mean('year')
+    if not np.isnan(mean):
+        ax.plot(
+            [2103, 2112], [mean, mean],
+            color='k',
+            lw=2,
+            zorder=1000,
+        )
+
     # --- lines ---
-    for dd, ww in zip(ds_models.data, weights.data):
-        if ww >= sorted(weights)[-3]:
-            color = 'darkred'
-        elif ww < sorted(weights)[3]:
-            color = 'darkviolet'
-        else:
-            continue
-        plot_line(dd, color=color, lw=.2)
+    # for dd, ww in zip(ds_models.data, weights.data):
+    #     if ww >= sorted(weights)[-3]:
+    #         color = 'darkred'
+    #     elif ww < sorted(weights)[3]:
+    #         color = 'darkviolet'
+    #     else:
+    #         continue
+    #     plot_line(dd, color=color, lw=.2)
 
-    h1 = ax.plot([], [], color='darkred', lw=1)[0]
-    handles.append(h1)
-    labels.append('Highest 3 models')
+    # h1 = ax.plot([], [], color='darkred', lw=1)[0]
+    # handles.append(h1)
+    # labels.append('Highest 3 models')
 
-    h1 = ax.plot([], [], color='darkviolet', lw=1)[0]
-    handles.append(h1)
-    labels.append('Lowest 3 models')
+    # h1 = ax.plot([], [], color='darkviolet', lw=1)[0]
+    # handles.append(h1)
+    # labels.append('Lowest 3 models')
 
     # --- observations ---
     if ds_obs is not None and len(ds_obs['dataset']) == 1:
         h1 = plot_line(ds_obs.data.squeeze(), xx=ds_obs['year'].data, color='k')
-        label = 'Observations full range'
-        # label = 'Pseudo observations: CESM2'  # TODO: !!
+        if ds_obs['year'][-1] > 2025:
+            label = 'Perfect model'
+        else:
+            label = 'Observations'
     elif ds_obs is not None:
         plot_shading(
             ds_obs.min('dataset', skipna=False),
@@ -274,10 +308,11 @@ def plot(ds_models, ds_obs, weights, args, ds):
     # ax.set_ylim(-2.5, 8.5)
     # title = f'{cfg.target_region} temperature anomaly ($\degree$C) relative to {cfg.target_startyear_ref}-{cfg.target_endyear_ref}'
     # ax.set_title(title)
-    ax.set_ylabel('Temperature anomaly ($\degree$C)')
 
-    ax.set_xlabel('Year')
-    ax.set_xlim(1950, 2100)
+    ax.set_ylabel('Temperature anomaly ($\degree$C) relative to 1995-2014')
+
+    # ax.set_xlabel('Year')
+    ax.set_xlim(1950, 2115)
     ax.grid(zorder=0, axis='y')
 
     plt.legend(handles, labels, loc='upper left')

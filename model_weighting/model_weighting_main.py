@@ -25,7 +25,7 @@ Authors
 - Lukas Brunner || lukas.brunner@env.ethz.ch
 
 Abstract
---------
+    --------
 Main script of the model weighting scheme described by Brunner et al. (2019)
 Lorenz et al. (2018) and Knutti et al. (2017). If you use this code please note
 the license and consider citing the papers below.
@@ -56,6 +56,7 @@ import xarray as xr
 from core.get_filenames import get_filenames
 from core.diagnostics import calculate_diagnostic
 from core.perfect_model_test import perfect_model_test
+from core.read_config import read_config
 from core.weights import (
     calculate_weights_sigmas,
     calculate_weights,
@@ -89,75 +90,6 @@ REGRID_OBS = [
     'ERA-Interim']
 
 
-def test_config(cfg):
-    """Some basic consistency tests for the config input"""
-    if len({len(cfg[key]) for key in cfg.keys() if 'predictor' in key}) != 1:
-        errmsg = 'All predictor_* variables need to have same length'
-        raise ValueError(errmsg)
-    if not os.access(cfg.save_path, os.W_OK | os.X_OK):
-        raise ValueError('save_path is not writable')
-    if (cfg.plot_path is not None and
-        not os.access(cfg.plot_path, os.W_OK | os.X_OK)):
-        raise ValueError('plot_path is not writable')
-    if not np.all([isinstance(cfg.overwrite, bool),
-                   isinstance(cfg.plot, bool)]):
-        raise ValueError('Typo in overwrite, debug, plot?')
-    if cfg.ensemble_independence and not cfg.ensembles:
-        raise ValueError('Can not use ensemble_independence without ensembles')
-    if cfg.sigma_i is not None:
-        cfg.sigma_i = float(cfg.sigma_i)
-    if cfg.sigma_q is not None:
-        cfg.sigma_q = float(cfg.sigma_q)
-    try:
-        cfg.obs_uncertainty
-    except AttributeError:
-        cfg.obs_uncertainty = 'center'
-    if (not isinstance(cfg['target_masko'], bool) or
-        not np.all([isinstance(masko, bool) for masko in cfg['predictor_masko']])):
-        errmsg = 'masko must be bool!'
-        raise ValueError(errmsg)
-
-    if cfg.obs_id is not None and cfg.obs_path is not None:
-        if isinstance(cfg.obs_id, str):
-            cfg.obs_id = [cfg.obs_id]
-        if isinstance(cfg.obs_path, str):
-            cfg.obs_path = [cfg.obs_path]
-        if len(cfg.obs_id) != len(cfg.obs_path):
-            errmsg = 'obs_id and obs_path need to have same length!'
-            logger.error(errmsg)
-            raise ValueError(errmsg)
-
-    try:
-        cfg.idx_lats = np.atleast_1d(cfg.idx_lats)
-        cfg.idx_lons = np.atleast_1d(cfg.idx_lons)
-    except AttributeError:
-        cfg.idx_lats = None
-        cfg.idx_lons = None
-
-    if cfg.target_diagnostic is None and not (
-            cfg.sigma_q is None and cfg.sigma_i is None):
-        errmsg = 'If target_diagnostic is None, both sigmas need to be set!'
-        logger.error(errmsg)
-        raise ValueError(errmsg)
-
-    if isinstance(cfg.model_path, str):
-        cfg.model_path = [cfg.model_path]
-    if isinstance(cfg.model_id, str):
-        cfg.model_id = [cfg.model_id]
-    if isinstance(cfg.model_scenario, str):
-        cfg.model_scenario = [cfg.model_scenario]
-    if len({len(cfg[key]) for key in cfg.keys() if 'model_' in key}) != 1:
-        errmsg = 'All model_* variables need to have same length'
-        raise ValueError(errmsg)
-
-    try:
-        cfg.subset
-    except AttributeError:
-        cfg.subset = None
-
-    return None
-
-
 def read_args():
     """Read the given configuration from the config file"""
     parser = argparse.ArgumentParser(
@@ -177,28 +109,6 @@ def read_args():
         '--logging-file', '-log-file', dest='log_file', default=None,
         type=str, help='Redirect logging output to given file')
     return parser.parse_args()
-
-
-def read_config(config, config_file):
-    """Read a configuration from a configuration file.
-
-    Parameters
-    ----------
-    config : string
-        A string identifying a configuration in config_file. This string will
-        also be used to name the final output file.
-    config_file : string
-        A valid configuration file name (ending with ".ini")
-
-    Returns
-    -------
-    cfg : configuration object
-        A configuration object with must contain all mandatory configurations.
-    """
-    cfg = utils.read_config(config, config_file)
-    utils.log_parser(cfg)
-    test_config(cfg)
-    return cfg
 
 
 def calc_target(filenames, cfg):
@@ -238,7 +148,7 @@ def calc_target(filenames, cfg):
                     cfg.target_endyear),
                 season=cfg.target_season,
                 time_aggregation=cfg.target_agg,
-                mask_ocean=cfg.target_masko,
+                mask_land_sea=cfg.target_mask,
                 region=cfg.target_region,
                 overwrite=cfg.overwrite,
                 idx_lats=cfg.idx_lats,
@@ -257,7 +167,7 @@ def calc_target(filenames, cfg):
                         cfg.target_endyear_ref),
                     season=cfg.target_season,
                     time_aggregation=cfg.target_agg,
-                    mask_ocean=cfg.target_masko,
+                    mask_land_sea=cfg.target_mask,
                     region=cfg.target_region,
                     overwrite=cfg.overwrite,
                     idx_lats=cfg.idx_lats,
@@ -276,13 +186,12 @@ def calc_target(filenames, cfg):
             if cfg.target_startyear_ref is not None else None)
 
 
-def calc_predictors(filenames, cfg):
+def calc_performance(filenames, cfg):
     """
-    Calculates the predictor diagnostics for each model.
+    Calculate the performance predictor diagnostics for each model.
 
-    Calculate the predictor diagnostics for each model and the distance between
-    each diagnostic and the observations (quality -- delta_q) as well as the
-    distance between the diagnostics of each model (independence -- delta_i).
+    For each predictor calculate the corresponding diagnostic, i.e.,
+    the area weighted RMSE between each model and the observations.
 
     Parameters
     ----------
@@ -293,40 +202,25 @@ def calc_predictors(filenames, cfg):
 
     Returns
     -------
-    delta_q : xarray.DataArray, shape (N,) or (N, N)
-        DataArray of distances from each model to the observations
-    delta_i : xarray.DataArray, shape (N, N)
-        DataArray of distances from each model to each other model
-
-    Return Dimensions
-    -----------------
-    perfect_model_ensemble : shape (N,)
-        The (model, ensemble) combination which is treated as 'perfect' for
-        this case
-    model_ensemble : (N,)
-        The (model, ensemble) combination
-
-    Both dimensions have equal values but they are treated formally different
-    as xarray can not handle variables with the same dimension twice properly.
+    differences : xarray.DataArray, shape (N, M)
+        A data array with dimensions (number of diagnostics, number of models).
     """
     # for each file in filenames calculate all diagnostics for each time period
-    diagnostics_all = []
-    for idx, diagn in enumerate(cfg.predictor_diagnostics):
-        logger.info(f'Calculate diagnostic {diagn}{cfg.predictor_aggs[idx]}...')
+    diffs = []
+    for idx, diagn in enumerate(cfg.performance_diagnostics):
+        logger.info(f'Calculate performance diagnostic {diagn}{cfg.performance_aggs[idx]}...')
 
         base_path = os.path.join(cfg.save_path, diagn)
         os.makedirs(base_path, exist_ok=True)
 
         # if its a derived diagnostic: get first basic variable to get one of
         # the filenames (the others will be created by replacement)
-        varn = DERIVED[diagn][0] if diagn in DERIVED.keys() else diagn
+        varn = [*diagn.values()][0][0] if isinstance(diagn, dict) else diagn
+        diagn_key = [*diagn.keys()][0] if isinstance(diagn, dict) else diagn
 
         diagnostics = []
         for model_ensemble, filename in filenames[varn].items():
             with utils.LogTime(model_ensemble, level='debug'):
-
-                if diagn in list(DERIVED.keys()):
-                    diagn = {diagn: DERIVED[diagn]}
 
                 diagnostic = calculate_diagnostic(
                     infile=filename,
@@ -334,12 +228,146 @@ def calc_predictors(filenames, cfg):
                     diagn=diagn,
                     base_path=base_path,
                     time_period=(
-                        cfg.predictor_startyears[idx],
-                        cfg.predictor_endyears[idx]),
-                    season=cfg.predictor_seasons[idx],
-                    time_aggregation=cfg.predictor_aggs[idx],
-                    mask_ocean=cfg.predictor_masko[idx],
-                    region=cfg.predictor_regions[idx],
+                        cfg.performance_startyears[idx],
+                        cfg.performance_endyears[idx]),
+                    season=cfg.performance_seasons[idx],
+                    time_aggregation=cfg.performance_aggs[idx],
+                    mask_land_sea=cfg.performance_masks[idx],
+                    region=cfg.performance_regions[idx],
+                    overwrite=cfg.overwrite,
+                    idx_lats=cfg.idx_lats,
+                    idx_lons=cfg.idx_lons,
+                )
+
+            diagnostic['model_ensemble'] = xr.DataArray(
+                [model_ensemble], dims='model_ensemble')
+            diagnostics.append(diagnostic)
+            logger.debug('Calculate diagnostics for file {}... DONE'.format(filename))
+
+        diagnostics = xr.concat(diagnostics, dim='model_ensemble')
+
+        logger.debug('Read observations & calculate model quality...')
+        obs_list = []
+        for obs_path, obs_id in zip(cfg.obs_path, cfg.obs_id):
+            filename = os.path.join(obs_path, f'{varn}_mon_{obs_id}_g025.nc')
+
+            with utils.LogTime(f'Calculate diagnostic for {obs_id}', level='debug'):
+                obs = calculate_diagnostic(
+                    infile=filename,
+                    diagn=diagn,
+                    base_path=base_path,
+                    time_period=(
+                        cfg.performance_startyears[idx],
+                        cfg.performance_endyears[idx]),
+                    season=cfg.performance_seasons[idx],
+                    time_aggregation=cfg.performance_aggs[idx],
+                    mask_land_sea=cfg.performance_masks[idx],
+                    region=cfg.performance_regions[idx],
+                    overwrite=cfg.overwrite,
+                    regrid=obs_id in REGRID_OBS,
+                    idx_lats=cfg.idx_lats,
+                    idx_lons=cfg.idx_lons,
+                )
+                obs_list.append(obs)
+
+        obs = xr.concat(obs_list, dim='dataset_dim')
+
+        if cfg.obs_uncertainty == 'range':
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore')
+                obs_min = obs.min('dataset_dim', skipna=False)
+                obs_max = obs.max('dataset_dim', skipna=False)
+                diff = xr.apply_ufunc(
+                    distance_uncertainty, diagnostics[diagn_key],
+                    obs_min[diagn_key], obs_max[diagn_key],
+                    input_core_dims=[['lat', 'lon'], ['lat', 'lon'], ['lat', 'lon']],
+                    output_core_dims=[['lat', 'lon']],
+                    vectorize=True)
+        elif cfg.obs_uncertainty == 'center':
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore')
+                obs_min = obs.min('dataset_dim', skipna=False)
+                obs_max = obs.max('dataset_dim', skipna=False)
+            diff = diagnostics[diagn_key] - .5*(obs_min[diagn_key] + obs_max[diagn_key])
+        elif cfg.obs_uncertainty == 'mean':
+            diff = diagnostics[diagn_key] - obs.mean('dataset_dim', skipna=False)[diagn_key]
+        elif cfg.obs_uncertainty == 'median':
+            diff = diagnostics[diagn_key] - obs.median('dataset_dim', skipna=False)[diagn_key]
+        elif cfg.obs_uncertainty is None:
+            # obs_min and obs_max are the same for this case
+            diff = diagnostics[diagn_key] - obs[diagn_key].squeeze()
+        else:
+            raise NotImplementedError
+
+        # --- plot map of each difference ---
+        # takes a long time -> only commend in if needed
+        # if cfg.plot:
+        #     with utils.LogTime('Plotting maps', level='info'):
+        #         plot_maps(diff, idx, cfg)
+        # ---------------------------------------
+
+        diff = np.sqrt(area_weighted_mean(diff**2))
+        if cfg.performance_aggs[idx] == 'CYC':
+            diff = diff.mean('month')
+
+        diff = diff.expand_dims({'diagnostic': [idx]})
+        logger.debug('Read observations & calculate model quality... DONE')
+
+        diffs.append(diff)
+        logger.info(f'Calculate performance diagnostic {diagn_key}{cfg.performance_aggs[idx]}... DONE')
+    return xr.concat(diffs, dim='diagnostic')
+
+
+def calc_independence(filenames, cfg):
+    """
+    TODO
+    Calculates the independence predictor diagnostics for each model.
+
+    For each predictor calculate the corresponding diagnostic, i.e.,
+    the area weighted RMSE between each model pair.
+
+    Parameters
+    ----------
+    filenames : nested dictionary
+        See get_filenames() docstring for more information.
+    cfg : configuration object
+        See read_config() docstring for more information.
+
+    Returns
+    -------
+    differences : xarray.DataArray, shape (N, M, M)
+        A data array with dimensions (number of diagnostics, number of models,
+        number of models).
+    """
+    # for each file in filenames calculate all diagnostics for each time period
+    diffs = []
+    for idx, diagn in enumerate(cfg.independence_diagnostics):
+        logger.info(f'Calculate independence diagnostic {diagn}{cfg.independence_aggs[idx]}...')
+
+        base_path = os.path.join(cfg.save_path, diagn)
+        os.makedirs(base_path, exist_ok=True)
+
+        # if its a derived diagnostic: get first basic variable to get one of
+        # the filenames (the others will be created by replacement)
+        varn = [*diagn.values()][0][0] if isinstance(diagn, dict) else diagn
+        diagn_key = [*diagn.keys()][0] if isinstance(diagn, dict) else diagn
+
+        diagnostics = []
+        for model_ensemble, filename in filenames[varn].items():
+            with utils.LogTime(model_ensemble, level='debug'):
+
+                diagnostic = calculate_diagnostic(
+                    infile=filename,
+                    id_=model_ensemble.split('_')[2],
+                    diagn=diagn,
+                    base_path=base_path,
+                    time_period=(
+                        cfg.independence_startyears[idx],
+                        cfg.independence_endyears[idx]),
+                    season=cfg.independence_seasons[idx],
+                    time_aggregation=cfg.independence_aggs[idx],
+                    mask_land_sea=cfg.independence_masks[idx],
+                    region=cfg.independence_regions[idx],
                     overwrite=cfg.overwrite,
                     idx_lats=cfg.idx_lats,
                     idx_lons=cfg.idx_lons,
@@ -352,156 +380,124 @@ def calc_predictors(filenames, cfg):
 
         diagnostics = xr.concat(diagnostics, dim='model_ensemble')
         logger.debug('Calculate model independence matrix...')
-        diagn_key = [*diagn.keys()][0] if isinstance(diagn, dict) else diagn
 
-        diagnostics['rmse_models'] = xr.apply_ufunc(
+        diff = xr.apply_ufunc(
             weighted_distance_matrix, diagnostics[diagn_key],
             input_core_dims=[['model_ensemble', 'lat', 'lon']],
             output_core_dims=[['perfect_model_ensemble', 'model_ensemble']],
             kwargs={'lat': diagnostics['lat'].data},  # NOTE: comment out for unweighted
             vectorize=True,
         )
+        # fill newly defined dimension
+        diff['perfect_model_ensemble'] = diff['model_ensemble'].data
 
-        if cfg.predictor_aggs[idx] == 'CYC':
-            diagnostics['rmse_models'] = diagnostics['rmse_models'].mean('month')
+        if cfg.independence_aggs[idx] == 'CYC':
+            diff = diff.mean('month')
 
-        diagnostics['perfect_model_ensemble'] = diagnostics['model_ensemble'].data
+        diff.name = 'data'
+        diff = diff.expand_dims({'diagnostic': [idx]})
+        diffs.append(diff)
+
         logger.debug('Calculate independence matrix... DONE')
 
-        if cfg.obs_id is not None:
-            logger.debug('Read observations & calculate model quality...')
-            obs_list = []
-            for obs_path, obs_id in zip(cfg.obs_path, cfg.obs_id):
-                filename = os.path.join(obs_path, f'{varn}_mon_{obs_id}_g025.nc')
+        logger.info(f'Calculate independence diagnostic {diagn}{cfg.independence_aggs[idx]}...DONE')
+    return xr.concat(diffs, dim='diagnostic')
 
-                with utils.LogTime(f'Calculate diagnostic for {obs_id}', level='info'):
-                    obs = calculate_diagnostic(
-                        infile=filename,
-                        diagn=diagn,
-                        base_path=base_path,
-                        time_period=(
-                            cfg.predictor_startyears[idx],
-                            cfg.predictor_endyears[idx]),
-                        season=cfg.predictor_seasons[idx],
-                        time_aggregation=cfg.predictor_aggs[idx],
-                        mask_ocean=cfg.predictor_masko[idx],
-                        region=cfg.predictor_regions[idx],
-                        overwrite=cfg.overwrite,
-                        regrid=obs_id in REGRID_OBS,
-                        idx_lats=cfg.idx_lats,
-                        idx_lons=cfg.idx_lons,
-                    )
-                    obs_list.append(obs)
 
-            obs = xr.concat(obs_list, dim='dataset_dim')
-
-            # different methods of accounting for observational uncertainty
-            with warnings.catch_warnings():
-                warnings.filterwarnings('ignore')
-                obs_min = obs.min('dataset_dim', skipna=False)
-                obs_max = obs.max('dataset_dim', skipna=False)
-            if cfg.obs_uncertainty == 'range':
-                with warnings.catch_warnings():
-                    warnings.filterwarnings('ignore')
-                    diff = xr.apply_ufunc(
-                        distance_uncertainty, diagnostics[diagn_key],
-                        obs_min[diagn_key], obs_max[diagn_key],
-                        input_core_dims=[['lat', 'lon'], ['lat', 'lon'], ['lat', 'lon']],
-                        output_core_dims=[['lat', 'lon']],
-                        vectorize=True)
-            elif cfg.obs_uncertainty == 'center':
-                diff = diagnostics[diagn_key] - .5*(obs_min[diagn_key] + obs_max[diagn_key])
-            elif cfg.obs_uncertainty == 'mean':
-                diff = diagnostics[diagn_key] - obs.mean('dataset_dim', skipna=False)[diagn_key]
-            elif cfg.obs_uncertainty == 'median':
-                diff = diagnostics[diagn_key] - obs.median('dataset_dim', skipna=False)[diagn_key]
-            elif cfg.obs_uncertainty is None:
-                # obs_min and obs_max are the same for this case
-                diff = diagnostics[diagn_key] - obs_min[diagn_key]
-            else:
-                raise NotImplementedError
-
-            # --- plot map of each difference ---
-            # takes a long time -> only commend in if needed
-            # if cfg.plot:
-            #     with utils.LogTime('Plotting maps', level='info'):
-            #         plot_maps(diff, idx, cfg)
-            # ---------------------------------------
-
-            diff = np.sqrt(area_weighted_mean(diff**2))
-            if cfg.predictor_aggs[idx] == 'CYC':
-                diff = diff.mean('month')
-            diagnostics['rmse_obs'] = diff
-            logger.debug('Read observations & calculate model quality... DONE')
-
-        logger.debug('Normalize data...')
-
-        # different methods of normalizing each diagnostic
-        normalizer = diagnostics['rmse_models'].data
-        if cfg.obs_id is not None:
-            normalizer = np.concatenate([normalizer, [diagnostics['rmse_obs'].data]], axis=0)
-
-        if cfg.performance_normalize is None:
-            normalizer = 1.
-        elif cfg.performance_normalize.lower() == 'middle':
-            normalizer = .5*(np.nanmin(normalizer) + np.nanmax(normalizer))
-        elif cfg.performance_normalize.lower() == 'median':
-            normalizer = np.nanmedian(normalizer)
-        elif cfg.performance_normalize.lower() == 'mean':
-            normalizer = np.nanmean(normalizer)
-        elif cfg.performance_normalize.lower() == 'map':  # TODO: needs testing!
-            diagnostics['rmse_models'].data = np.interp(
-                diagnostics['rmse_models'], [np.nanmin(normalizer),
-                                             np.nanmax(normalizer)], [0, 1])
-            diagnostics['rmse_obs'].data = np.interp(
-                diagnostics['rmse_obs'], [np.nanmin(normalizer),
-                                          np.nanmax(normalizer)], [0, 1])
-            normalizer = 1
+def _normalize(data, normalize_by):
+    """Apply different normalization schemes to the right dimensions"""
+    normalize_by = normalize_by[0]
+    try:
+        normalize_by = float(normalize_by)
+        assert normalize_by > np.nanmin(data) / 10.
+        assert normalize_by < np.nanmax(data) * 10
+        normalizer = normalize_by
+    except ValueError:
+        if normalize_by.lower() == 'center':
+            normalizer = .5*(np.nanmin(data) + np.nanmax(data))
+        elif normalize_by.lower() == 'median':
+            normalizer = np.nanmedian(data)
+        elif normalize_by.lower() == 'mean':
+            normalizer = np.nanmean(data)
         else:
-            raise NotImplementedError
+            raise ValueError
 
-        diagnostics['rmse_models'] /= normalizer
-        if cfg.obs_id is not None:
-            diagnostics['rmse_obs'] /= normalizer
+    return data / normalizer
 
-        logger.debug('Normalize data... DONE')
-        diagnostics_all.append(diagnostics)
-        logger.info(f'Calculate diagnostic {diagn_key}{cfg.predictor_aggs[idx]}... DONE')
 
-        # --- optional: plot RMSE matrix ---
-        if cfg.plot:
-            plotn = plot_rmse(diagnostics['rmse_models'], idx, cfg,
-                              diagnostics['rmse_obs'] if cfg.obs_id is not None else None)
-            add_revision(diagnostics)
-            # diagnostics.to_netcdf(plotn + '.nc')  # NOTE: also save the data
-            logger.debug('Saved plot data: {}.nc'.format(plotn))
-        # ----------------------------------
+def _mean(data, weights=None):
+    """Weighted average of diagnostics."""
+    return np.average(data, weights=weights)
 
-    # take the mean over all diagnostics and write them into a now Dataset
-    # TODO: somehow xr.concat(diganostics_all) does not work -> fix it?
-    delta_i = xr.concat(
-        [dd['rmse_models'] for dd in diagnostics_all], dim='diagnostics')
-    delta_i = delta_i.mean('diagnostics')
-    delta_i.name = 'delta_i'
 
-    if cfg.obs_id is not None:
-        delta_q = xr.concat(
-            [dd['rmse_obs'] for dd in diagnostics_all], dim='diagnostics')
-        delta_q = delta_q.mean('diagnostics')
-    else:  # if there are not observations delta_i and delta_q are identical!
-        delta_q = delta_i.copy()
-    delta_q.name = 'delta_q'
+def calc_deltas(performance_diagnostics, independence_diagnostics, cfg):
+    """
+    Normalize and average diagnostics for performance and independence.
 
-    # --- optional: plot mean RMSE matrix ---
+    Parameters
+    ----------
+    performance_diagnostics : xarray.DataArray, shape(N, M)
+        See calc_performance()
+    independence_diagnostics : xarray.DataArray, shape(N, M, M)
+        See calc_independence()
+    cfg : config object
+
+    Returns
+    -------
+    delta_p : xarray.DataArray, shape(M,) or None
+    delta_i : xarray.DataArray, shape(M, M)
+    """
+    # make this to DataArray
+    # NOTE: I belief the 'temp' dimension is necessary to pass to xarray.apply_ufunc
+    # as core dimension. I can not pass no dimension because this will be interpreted
+    # as 'use all dimensions'.
+    normalize_by = xr.DataArray([cfg.independence_normalizers], dims=('temp', 'diagnostic'),
+                                coords={'diagnostic': independence_diagnostics['diagnostic']})
+    independence_diagnostics = xr.apply_ufunc(
+        _normalize, independence_diagnostics, normalize_by,
+        input_core_dims=[['model_ensemble', 'perfect_model_ensemble'], ['temp']],
+        output_core_dims=[['model_ensemble', 'perfect_model_ensemble']],
+        vectorize=True)
+    independence_diagnostics_mean = xr.apply_ufunc(
+        _mean, independence_diagnostics,
+        input_core_dims=[['diagnostic']],
+        vectorize=True,
+        kwargs={'weights': cfg.independence_weights})
+    independence_diagnostics_mean.name = 'delta_i'
+
     if cfg.plot:
-        plotn = plot_rmse(delta_i, 'mean', cfg,
-                          delta_q if cfg.obs_id is not None else None)
-        add_revision(diagnostics)
-        # diagnostics.to_netcdf(plotn + '.nc')  # also save the data
-        logger.debug('Saved plot data: {}.nc'.format(plotn))
-    # ---------------------------------------
+        max_ = np.max([dd.max() for dd in independence_diagnostics])
+        min_ = np.min([dd.min() for dd in independence_diagnostics])
+        plot_rmse(independence_diagnostics_mean, 'mean', cfg, 'independence', min_, max_)
+        for idx, diag in enumerate(independence_diagnostics):
+            plot_rmse(diag, idx, cfg, 'independence', min_, max_)
 
-    return delta_q, delta_i
+    if performance_diagnostics is None:  # model-model distances only
+        return None, independence_diagnostics_mean
+
+    normalize_by = xr.DataArray([cfg.performance_normalizers], dims=('temp', 'diagnostic'),
+                                coords={'diagnostic': performance_diagnostics['diagnostic']})
+    performance_diagnostics = xr.apply_ufunc(
+        _normalize, performance_diagnostics, normalize_by,
+        input_core_dims=[['model_ensemble'], ['temp']],
+        output_core_dims=[['model_ensemble']],
+        vectorize=True)
+    performance_diagnostics_mean = xr.apply_ufunc(
+        _mean, performance_diagnostics,
+        input_core_dims=[['diagnostic']],
+        vectorize=True,
+        kwargs={'weights': cfg.performance_weights})
+    performance_diagnostics_mean.name = 'delta_q'
+
+    if cfg.plot:
+        # NOTE: I assume the min_, max_ from the model-model distances will always be wider
+        # max_ = np.max([dd.max() for dd in performance_diagnostics])
+        # min_ = np.min([dd.min() for dd in performance_diagnostics])
+        plot_rmse(performance_diagnostics_mean, 'mean', cfg, 'performance', min_, max_)
+        for idx, diag in enumerate(performance_diagnostics):
+            plot_rmse(diag, idx, cfg, 'performance', min_, max_)
+
+    return performance_diagnostics_mean, independence_diagnostics_mean
 
 
 def calc_sigmas(targets, delta_i, unique_models, cfg, n_sigmas=50):
@@ -536,14 +532,17 @@ def calc_sigmas(targets, delta_i, unique_models, cfg, n_sigmas=50):
     sigma_base = np.nanmean(delta_i)  # an estimated sigma to start
 
     # a large value means all models have equal quality -> we want this as small as possible
-    if cfg.sigma_q == -99.:  # convention: equal weighting
-        sigmas_q = np.array([-99.])
+    if isinstance(cfg.sigma_q, (int, float)):
+        # if the user has given one of the sigmas use it
+        # NOTE: if sigma is -99 the corresponding weights will be set to 1 by convention
+        sigmas_q = np.array([cfg.sigma_q])
     else:
+        # otherwise allow a range
         sigmas_q = np.linspace(.2*sigma_base, 2*sigma_base, n_sigmas)
     # a large value means all models depend on each other, a small value means all models
     # are independent -> we want this ~delta_i
-    if cfg.sigma_i == -99.:  # convention: equal weighting
-        sigmas_i = np.array([-99.])
+    if isinstance(cfg.sigma_i, (int, float)):  # convention: equal weighting
+        sigmas_i = np.array([cfg.sigma_i])
     else:
         sigmas_i = np.linspace(.2*sigma_base, 2*sigma_base, n_sigmas)
 
@@ -554,7 +553,7 @@ def calc_sigmas(targets, delta_i, unique_models, cfg, n_sigmas=50):
     targets_1ens_mean = area_weighted_mean(targets_1ens, latn='lat', lonn='lon').data
 
     # use the initial-condition members to estimate sigma_i
-    if cfg.ensemble_independence:
+    if cfg.variants_independence:
         sigmas_i = independence_sigma(delta_i, sigmas_i)
         idx_i_min = 0
     else:
@@ -564,16 +563,13 @@ def calc_sigmas(targets, delta_i, unique_models, cfg, n_sigmas=50):
 
     # ratio of perfect models inside their respective weighted percentiles
     # for each sigma combination
-
     inside_ratio = perfect_model_test(
         targets_1ens_mean, weights_sigmas,
         perc_lower=cfg.percentiles[0],
         perc_upper=cfg.percentiles[1])
 
-    force_inside_ratio = False
-    if cfg.inside_ratio is not None and cfg.inside_ratio.lower() == 'force':
-        force_inside_ratio = True
-    if cfg.inside_ratio is None or force_inside_ratio:
+    force_inside_ratio = isinstance(cfg.inside_ratio, str)  # then it is 'force'
+    if force_inside_ratio:
         cfg.inside_ratio = cfg.percentiles[1] - cfg.percentiles[0]
     inside_ok = inside_ratio >= cfg.inside_ratio
 
@@ -588,7 +584,7 @@ def calc_sigmas(targets, delta_i, unique_models, cfg, n_sigmas=50):
         else:
             raise ValueError(logmsg)
 
-    if cfg.ensemble_independence:
+    if cfg.variants_independence:
         idx_q_min = np.argmin(1-inside_ok[:, idx_i_min])
     else:
         # find the element with the smallest sum i+j which is True
@@ -646,7 +642,12 @@ def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg):
         weights = numerator/denominator
         weights /= weights.sum()
         dims = 'model_ensemble'
-    else:  # in this case delta_q is a matrix for each model as truth once
+    else:
+        # NOTE: without observations delta_q does not exist but we use the
+        # perfect model setting which is stored in delta_i and create weights
+        # for each case!
+        delta_q = delta_i
+        delta_q.name = 'delta_q'
         calculate_weights_matrix = np.vectorize(
             calculate_weights, signature='(n)->(n),(n)', excluded=[1, 2, 3])
         numerator, denominator = calculate_weights_matrix(delta_q, delta_i, sigma_q, sigma_i)
@@ -654,6 +655,7 @@ def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg):
         weights /= np.nansum(weights, axis=-1)
         dims = ('perfect_model_ensemble', 'model_ensemble')
 
+    # create this just to fill
     ds = delta_q.to_dataset().copy()
     ds = ds.rename({'delta_q': 'weights'})
     ds['weights'].data = weights
@@ -661,8 +663,8 @@ def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg):
     ds['weights_i'] = xr.DataArray(denominator, dims=dims)
     ds['delta_q'] = delta_q
     ds['delta_i'] = delta_i
-    ds['sigma_q'] = xr.DataArray([sigma_q])
-    ds['sigma_i'] = xr.DataArray([sigma_i])
+    ds['sigma_q'] = xr.DataArray(sigma_q)
+    ds['sigma_i'] = xr.DataArray(sigma_i)
 
     # add some metadata
     ds['model_ensemble'].attrs = {
@@ -715,7 +717,9 @@ def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg):
 
     if cfg.plot and cfg.obs_id:
         plot_weights(ds, cfg, numerator, denominator)
-        plot_weights(ds, cfg, numerator, denominator, sort=True)
+        plot_weights(ds, cfg, numerator, denominator, sort_by='weight')
+        plot_weights(ds, cfg, numerator, denominator, sort_by='performance')
+        plot_weights(ds, cfg, numerator, denominator, sort_by='independence')
 
     return ds
 
@@ -741,16 +745,16 @@ def save_data(ds, targets, clim, filenames, cfg):
     # save additional variables for convenience
     if targets is not None:
         ds[cfg.target_diagnostic] = targets
+        ds['filename'] = xr.DataArray(
+            [*filenames[cfg.target_diagnostic].values()],
+            coords={'model_ensemble': [*filenames[cfg.target_diagnostic].keys()]},
+            dims='model_ensemble',
+            attrs={
+                'units': '1',
+                'long_name': 'Full Path and Filename',
+            })
     if clim is not None:
         ds[f'{cfg.target_diagnostic}_clim'] = clim
-    ds['filename'] = xr.DataArray(
-        [*filenames[cfg.target_diagnostic].values()],
-        coords={'model_ensemble': [*filenames[cfg.target_diagnostic].keys()]},
-        dims='model_ensemble',
-        attrs={
-            'units': '1',
-            'long_name': 'Full Path and Filename',
-        })
 
     # add some metadata
     ds.attrs.update({
@@ -776,28 +780,18 @@ def main(args):
     log.start('main().read_config()')
     cfg = read_config(args.config, args.filename)
 
-    log.start('main().set_up_filenames(cfg)')
+    log.start('main().set_up_filenames(**kwargs)')
+    filenames, unique_models = get_filenames(cfg)
 
-    # get basic variables for diagnostics
-    varns = []
-    for varn in cfg.predictor_diagnostics:
-        if varn in DERIVED:
-            varns.append(DERIVED[varn][0])
-            varns.append(DERIVED[varn][1])
-        else:
-            varns.append(varn)
+    log.start('main().calc_predictors(**kwargs)')
+    if cfg.performance_diagnostics is None or cfg.obs_id is None:
+        performance_diagnostics = None
+    else:
+        performance_diagnostics = calc_performance(filenames, cfg)
+    independence_diagnostics = calc_independence(filenames, cfg)
 
-    if cfg.target_diagnostic is not None:
-        # only if sigmas are None we need to calculate the target
-        varns += [cfg.target_diagnostic]
-
-    varns = np.unique(varns)
-    filenames, unique_models = get_filenames(
-        varns, cfg.model_id, cfg.model_scenario, cfg.model_path, cfg.ensembles,
-        subset=cfg.subset)
-
-    log.start('main().calc_predictors(fn, cfg)')
-    delta_q, delta_i = calc_predictors(filenames, cfg)
+    log.start('main().calc_deltas(**kwargs)')
+    delta_q, delta_i = calc_deltas(performance_diagnostics, independence_diagnostics, cfg)
 
     if cfg.target_diagnostic is None:
         logger.info('Using user sigmas: q={}, i={}'.format(cfg.sigma_q, cfg.sigma_i))
@@ -806,15 +800,15 @@ def main(args):
         targets = None
         clim = None
     else:
-        log.start('main().calc_target(fn, cfg)')
+        log.start('main().calc_target(**kwargs)')
         targets, clim = calc_target(filenames[cfg.target_diagnostic], cfg)
-        log.start('main().calc_sigmas(targets, delta_i, cfg)')
+        log.start('main().calc_sigmas(**kwargs)')
         sigma_q, sigma_i = calc_sigmas(targets, delta_i, unique_models, cfg)
 
-    log.start('main().calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg)')
+    log.start('main().calc_weights(**kwargs)')
     weights = calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg)
 
-    log.start('main().save_data(weights, cfg)')
+    log.start('main().save_data(**kwargs)')
     save_data(weights, targets, clim, filenames, cfg)
     log.stop
 

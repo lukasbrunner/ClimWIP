@@ -134,7 +134,7 @@ def standardize_units(da, varn):
         newunit = "degC"
         if unit == newunit:
             pass
-        elif unit == 'K':
+        elif unit in ['K', 'Kelvin']:
             da.data -= 273.15
             da.attrs['units'] = newunit
         elif unit.lower() in ['degc', 'deg_c', 'celsius', 'degreec',
@@ -201,7 +201,7 @@ def calculate_basic_diagnostic(infile, varn,
                                time_period=None,
                                season=None,
                                time_aggregation=None,
-                               mask_ocean=False,
+                               mask_land_sea=False,
                                region='GLOBAL',
                                overwrite=False,
                                regrid=False,  # TODO, DELETE
@@ -230,7 +230,7 @@ def calculate_basic_diagnostic(infile, varn,
     season : {'JJA', 'SON', 'DJF', 'MAM', 'ANN'}, optional
     time_aggregation : {'CLIM', 'STD', 'TREND', 'ANOM-GOBAL', 'ANOM-LOCAL'}, optional
         Type of time aggregation to use.
-    mask_ocean : bool, optional
+    mask_land_sea : {'sea', 'land', False}, optional
     region : list of strings or str, optional
         Each string must be a valid SREX region
     overwrite : bool, optional
@@ -264,6 +264,7 @@ def calculate_basic_diagnostic(infile, varn,
     except ValueError:
         pass
 
+    da = standardize_units(da, varn)
     da = flip_antimeridian(da)
     assert np.all(da['lat'].data == np.arange(-88.75, 90., 2.5))
     assert np.all(da['lon'].data == np.arange(-178.75, 180., 2.5))
@@ -278,9 +279,14 @@ def calculate_basic_diagnostic(infile, varn,
     else:
         raise NotImplementedError('season={}'.format(season))
 
-    if mask_ocean:
+    if isinstance(mask_land_sea, bool) and not mask_land_sea:
+        pass
+    elif mask_land_sea == 'sea':
         sea_mask = regionmask.defined_regions.natural_earth.land_110.mask(da) == 0
         da = da.where(sea_mask)
+    elif mask_land_sea == 'land':
+        land_mask = np.isnan(regionmask.defined_regions.natural_earth.land_110.mask(da))
+        da = da.where(land_mask)
 
     if time_aggregation == 'ANOM-GLOBAL':
         da_mean = da.groupby('time.year').mean('time', skipna=False)
@@ -331,7 +337,6 @@ def calculate_basic_diagnostic(infile, varn,
             # end program if only nan (i.e., ocean with mask)
             sys.exit(f'{idx_lats, idx_lons} contains only nan')
 
-    da = standardize_units(da, varn)
     attrs = da.attrs
 
     with warnings.catch_warnings():
@@ -432,7 +437,9 @@ def calculate_diagnostic(infile, diagn, base_path, **kwargs):
             outfile = os.path.join(base_path, '_'.join([
                 '{infile}_{time_period[0]}-{time_period[1]}_{season}',
                 '{time_aggregation}_{region}_{masked}.nc']).format(
-                    masked='masked' if kwargs['mask_ocean'] else 'unmasked',
+                    masked=(
+                        kwargs['mask_land_sea'] + 'masked'
+                        if not isinstance(kwargs['mask_land_sea'], bool) else 'unmasked'),
                     **kwargs))
         else:
             str_ = '_'.join(['-'.join(map(str, kwargs['idx_lats'])),
@@ -441,7 +448,9 @@ def calculate_diagnostic(infile, diagn, base_path, **kwargs):
                 '{infile}_{time_period[0]}-{time_period[1]}_{season}',
                 '{time_aggregation}_{region}_{masked}_{str_}.nc']).format(
                     str_=str_,
-                    masked='masked' if kwargs['mask_ocean'] else 'unmasked',
+                    masked=(
+                        kwargs['mask_land_sea'] + 'masked'
+                        if not isinstance(kwargs['mask_land_sea'], bool) else 'unmasked'),
                     **kwargs))
         return outfile
 
