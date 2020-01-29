@@ -21,7 +21,7 @@ import seaborn as sns
 from utils_python.xarray import area_weighted_mean
 from boxplot import boxplot, quantile
 
-SAVEPATH = os.path.dirname(os.path.abspath(__file__)) + '/../../plots/boxplots'
+SAVEPATH = os.path.dirname(os.path.abspath(__file__)) + '/../../plots/boxplots_bootstrap'
 
 
 def read_input():
