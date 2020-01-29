@@ -186,7 +186,6 @@ def get_filenames(cfg):
             if isinstance(varn, dict):  # multi-variable diagnostic
                 varns.append([*varn.values()][0][0])
                 varns.append([*varn.values()][0][1])
-                import ipdb; ipdb.set_trace()
             else:
                 varns.append(varn)
     if cfg.independence_diagnostics is not None:
