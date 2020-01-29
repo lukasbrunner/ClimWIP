@@ -32,7 +32,7 @@ ClimWIP is written in Python and requires at least version 3.6. It is currently 
 
 To clone it from GitHub use
 
-<code>git clone https://git.iac.ethz.ch/model_weighting/model_weighting.git</code>
+<code>git clone git@git.iac.ethz.ch:model_weighting/model_weighting.git</code>
 
 To install dependencies change into the newly created directory (by default with <code>cd ClimWIP</code> (and at the moment also <code>git checkout paper</code>)) and run
 <code>conda env create -f environment.yml</code>
