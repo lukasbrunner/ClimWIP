@@ -29,6 +29,7 @@ Abstract
 """
 import logging
 import numpy as np
+from xarray.core.dataarray import DataArray
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,10 @@ def calculate_weights(quality, independence, sigma_q, sigma_i):
     -------
     numerator, denominator : ndarray, shape (N,)
     """
+    if isinstance(quality, DataArray):
+        quality = quality.data
+    if isinstance(independence, DataArray):
+        independence = independence.data
     sigma_q = float(sigma_q)  # sigma_q needs to by of type int or float
     sigma_i = float(sigma_i)  # sigma_i needs to by of type int or float
     assert len(quality.shape) == 1, 'quality needs to be a 1D array'
