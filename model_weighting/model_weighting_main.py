@@ -314,7 +314,7 @@ def calc_performance(filenames, cfg):
         logger.debug('Read observations & calculate model quality... DONE')
 
         diffs.append(diff)
-        logger.info(f'Calculate diagnostic {diagn_key}{cfg.performance_aggs[idx]}... DONE')
+        logger.info(f'Calculate performance diagnostic {diagn_key}{cfg.performance_aggs[idx]}... DONE')
     return xr.concat(diffs, dim='diagnostic')
 
 
@@ -342,7 +342,7 @@ def calc_independence(filenames, cfg):
     # for each file in filenames calculate all diagnostics for each time period
     diffs = []
     for idx, diagn in enumerate(cfg.independence_diagnostics):
-        logger.info(f'Calculate diagnostic {diagn}{cfg.independence_aggs[idx]}...')
+        logger.info(f'Calculate independence diagnostic {diagn}{cfg.independence_aggs[idx]}...')
 
         base_path = os.path.join(cfg.save_path, diagn)
         os.makedirs(base_path, exist_ok=True)
@@ -400,7 +400,7 @@ def calc_independence(filenames, cfg):
 
         logger.debug('Calculate independence matrix... DONE')
 
-        logger.info(f'Calculate diagnostic {diagn}{cfg.independence_aggs[idx]}...DONE')
+        logger.info(f'Calculate independence diagnostic {diagn}{cfg.independence_aggs[idx]}...DONE')
     return xr.concat(diffs, dim='diagnostic')
 
 
@@ -430,73 +430,6 @@ def _mean(data, weights=None):
     return np.average(data, weights=weights)
 
 
-def calc_deltas_old(performance_diagnostics, independence_diagnostics, cfg):
-    """
-   TODO:
-    Current situation:
-    Each diagnostic is normalized by either
-    - mean
-    - median
-    - middle of full range
-    - mapped into the range [0, 1]
-    This is based on all pair-wise distances! (i.e., the model-observation
-    distances as well as the model-model distances!).
-
-    This has the problem that the normalization changes when exchanging one
-    ensemble member for another, which is not really what we want.
-
-    Ideas:
-    - Use a constant normalization by natural units.
-      Pros: Solves issue when exchaning ensemble members; highly tracable
-      Cons: The relative importance of diagnostics will change, e.g., from
-       summer to winter if the variability of one of them changes
-    """
-    # --- old way for testing ---
-    # NOTE: will not work for differing performance and independence values
-    if len(set(performance_diagnostics['diagnostic'].data).difference(
-            independence_diagnostics['diagnostic'].data)) != 0:
-        raise ValueError
-    if performance_diagnostics is not None:
-        performance_diagnostics = performance_diagnostics.expand_dims(
-            {'perfect_model_ensemble': ['OBS']})
-        diags = xr.concat([independence_diagnostics, performance_diagnostics],
-                          dim='perfect_model_ensemble')
-    else:
-        diags = independence_diagnostics
-
-    # make this to Dataarray
-    normalize_by = xr.DataArray([cfg.performance_normalizers], dims=('temp', 'diagnostic'),
-                                coords={'diagnostic': diags['diagnostic']})
-
-    diags = xr.apply_ufunc(
-        _normalize, diags, normalize_by,
-        input_core_dims=[['model_ensemble', 'perfect_model_ensemble'], ['temp']],
-        output_core_dims=[['model_ensemble', 'perfect_model_ensemble']],
-        vectorize=True)
-
-    diag_mean = xr.apply_ufunc(
-        _mean, diags,
-        input_core_dims=[['diagnostic']],
-        vectorize=True,
-        kwargs={'weights': cfg.performance_weights})
-
-    if performance_diagnostics is None:
-        delta_q = diag_mean
-        delta_i = diag_mean
-    else:
-        delta_q = diag_mean.sel(perfect_model_ensemble='OBS')
-        delta_i = diag_mean.drop_sel(perfect_model_ensemble='OBS')
-
-    # --- optional: plot RMSE matrices ---
-    if cfg.plot:
-        plotn = plot_rmse(diag_mean, 'mean', cfg)
-        for idx, diag in enumerate(diags):
-            plot_rmse(diag, idx, cfg)
-    # ------------------------------------
-
-    return delta_q, delta_i
-
-
 def calc_deltas(performance_diagnostics, independence_diagnostics, cfg):
     """
     Normalize and average diagnostics for performance and independence.
@@ -514,7 +447,7 @@ def calc_deltas(performance_diagnostics, independence_diagnostics, cfg):
     delta_p : xarray.DataArray, shape(M,) or None
     delta_i : xarray.DataArray, shape(M, M)
     """
-    # make this to Dataarray
+    # make this to DataArray
     # NOTE: I belief the 'temp' dimension is necessary to pass to xarray.apply_ufunc
     # as core dimension. I can not pass no dimension because this will be interpreted
     # as 'use all dimensions'.
@@ -532,12 +465,12 @@ def calc_deltas(performance_diagnostics, independence_diagnostics, cfg):
         kwargs={'weights': cfg.independence_weights})
     independence_diagnostics_mean.name = 'delta_i'
 
-    # --- optional: plot RMSE matrices ---
     if cfg.plot:
-        plotn = plot_rmse(independence_diagnostics_mean, 'mean', cfg)
+        max_ = np.max([dd.max() for dd in independence_diagnostics])
+        min_ = np.min([dd.min() for dd in independence_diagnostics])
+        plot_rmse(independence_diagnostics_mean, 'mean', cfg, 'independence', min_, max_)
         for idx, diag in enumerate(independence_diagnostics):
-            plot_rmse(diag, idx, cfg)
-    # ------------------------------------
+            plot_rmse(diag, idx, cfg, 'independence', min_, max_)
 
     if performance_diagnostics is None:  # model-model distances only
         return None, independence_diagnostics_mean
@@ -556,7 +489,13 @@ def calc_deltas(performance_diagnostics, independence_diagnostics, cfg):
         kwargs={'weights': cfg.performance_weights})
     performance_diagnostics_mean.name = 'delta_q'
 
-    # TODO: new plot routine for 1D distances from observations
+    if cfg.plot:
+        # NOTE: I assume the min_, max_ from the model-model distances will always be wider
+        # max_ = np.max([dd.max() for dd in performance_diagnostics])
+        # min_ = np.min([dd.min() for dd in performance_diagnostics])
+        plot_rmse(performance_diagnostics_mean, 'mean', cfg, 'performance', min_, max_)
+        for idx, diag in enumerate(performance_diagnostics):
+            plot_rmse(diag, idx, cfg, 'performance', min_, max_)
 
     return performance_diagnostics_mean, independence_diagnostics_mean
 
@@ -624,7 +563,6 @@ def calc_sigmas(targets, delta_i, unique_models, cfg, n_sigmas=50):
 
     # ratio of perfect models inside their respective weighted percentiles
     # for each sigma combination
-
     inside_ratio = perfect_model_test(
         targets_1ens_mean, weights_sigmas,
         perc_lower=cfg.percentiles[0],
@@ -779,7 +717,9 @@ def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg):
 
     if cfg.plot and cfg.obs_id:
         plot_weights(ds, cfg, numerator, denominator)
-        plot_weights(ds, cfg, numerator, denominator, sort=True)
+        plot_weights(ds, cfg, numerator, denominator, sort_by='weight')
+        plot_weights(ds, cfg, numerator, denominator, sort_by='performance')
+        plot_weights(ds, cfg, numerator, denominator, sort_by='independence')
 
     return ds
 
@@ -851,7 +791,6 @@ def main(args):
     independence_diagnostics = calc_independence(filenames, cfg)
 
     log.start('main().calc_deltas(**kwargs)')
-    # delta_q, delta_i = calc_deltas_old(performance_diagnostics, independence_diagnostics, cfg)  # DEBUG
     delta_q, delta_i = calc_deltas(performance_diagnostics, independence_diagnostics, cfg)
 
     if cfg.target_diagnostic is None:
