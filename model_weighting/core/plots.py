@@ -285,7 +285,7 @@ def plot_weights(ds, cfg, nn, dd, sort=False):
 
     ax.grid()
     title = 'Weights per model ($\sigma_q$={:.2f}, $\sigma_i$={:.2f})'.format(
-        ds['sigma_q'].data[0], ds['sigma_i'].data[0])
+        ds['sigma_q'].data, ds['sigma_i'].data)
     ax.set_title(title)
 
     plt.legend(title='Normalized Weights')
