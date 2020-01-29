@@ -51,12 +51,12 @@ def calculate_weights(quality, independence, sigma_q, sigma_i):
     -------
     numerator, denominator : ndarray, shape (N,)
     """
+    sigma_q = float(sigma_q)  # sigma_q needs to by of type int or float
+    sigma_i = float(sigma_i)  # sigma_i needs to by of type int or float
     assert len(quality.shape) == 1, 'quality needs to be a 1D array'
     assert len(independence.shape) == 2, 'independence needs to be a 2D array'
     errmsg = 'quality and independence need to have matching shapes'
     assert quality.shape == independence.shape[:1], errmsg
-    assert isinstance(sigma_q, float), 'sigma_q needs to by of type float'
-    assert isinstance(sigma_i, float), 'sigma_i needs to by of type float'
     assert np.all(np.isnan(np.diagonal(independence))), '(i, i) should be nan'
     assert np.isnan(quality).sum() <= 1, 'should have maximal one nan'
 
