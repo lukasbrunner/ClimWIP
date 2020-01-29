@@ -46,7 +46,7 @@ GeoAxes._pcolormesh_patched = Axes.pcolormesh
 logger = logging.getLogger(__name__)
 
 
-def plot_rmse(da, idx, cfg, da2=None):
+def plot_rmse(da, idx, cfg, what, min_, max_):
     """Matrix plot of RMSEs for a given diagnostic.
 
     Parameters
@@ -57,35 +57,33 @@ def plot_rmse(da, idx, cfg, da2=None):
         A string for naming the plot (normally the name of the diagnostic)
     cfg : object
         Config object
-    da2 : xarray.DataArray, shape (N,)
-        Has to contain the RMSE from each model to the observations
     """
-    if isinstance(idx, int):
-        try:
-            diagn = cfg.performance_diagnostics[idx]
-            agg = cfg.performance_aggs[idx]
-        except AttributeError:
-            diagn = cfg.independence_diagnostics[idx]
-            agg = cfg.independence_aggs[idx]
-        title = 'Normalized RMSE {} {}'.format(diagn, agg)
-        filename = 'rmse_{}-{}'.format(diagn, agg)
-    else:
-        title = 'Mean RMSE all diagnostics'
-        filename = 'rmse_mean'
-    path = os.path.join(cfg.plot_path, cfg.config)
-    os.makedirs(path, exist_ok=True)
-
-    fig, ax = plt.subplots(figsize=(20, 20))
-
     data = da.data
     xx = da['model_ensemble'].data
-    if da2 is not None:
-        data = np.concatenate([data, [da2.data]], axis=0)
-        yy = list(xx) + ['Observations']
-    else:
+    if what == 'performance':
+        yy = ['Observations']
+        data = data.reshape(1, -1)
+    elif what == 'independence':
         yy = xx
 
-    im = ax.matshow(data, vmin=0.)
+    if isinstance(idx, int):  # single diagnostics
+        if what == 'performance':
+            diagn = f'{cfg.performance_diagnostics[idx]}{cfg.performance_aggs[idx]}'
+            period = f'{cfg.performance_startyears[idx]}-{cfg.performance_endyears[idx]}'
+        elif what == 'independence':
+            diagn = f'{cfg.independence_diagnostics[idx]}{cfg.independence_aggs[idx]}'
+            period = f'{cfg.independence_startyears[idx]}-{cfg.independence_endyears[idx]}'
+        title = 'Normalized {} RMSE {} {}'.format(what, diagn, period)
+        filename = 'rmse_{}_{}'.format(what, diagn)
+    else:  # mean diagnostic
+        title = 'Mean RMSE all diagnostics'
+        filename = 'rmse_{}_mean'.format(what)
+
+    path = os.path.join(cfg.plot_path, cfg.config)
+    os.makedirs(path, exist_ok=True)
+    fig, ax = plt.subplots(figsize=(20, 20))
+
+    im = ax.matshow(data, vmin=min_, vmax=max_)
 
     ax.set_xticks(np.arange(len(xx)))
     ax.set_yticks(np.arange(len(yy)))
@@ -93,7 +91,7 @@ def plot_rmse(da, idx, cfg, da2=None):
     plt.xticks(rotation=90)
     ax.set_yticklabels(yy)
     ax.set_ylim(len(yy)-.5, -.5)
-    ax.set_title(title, fontsize='xx-large', pad=100)
+    ax.set_title(title, fontsize='xx-large', pad=150)
 
     fig.colorbar(im, ax=ax, fraction=.046, pad=.04)
 
@@ -182,17 +180,6 @@ def plot_maps(ds, idx, cfg):
         proj = ccrs.PlateCarree(central_longitude=0)
         fig, ax = plt.subplots(subplot_kw={'projection': proj})
         ds_sel = ds.sel(model_ensemble=model_ensemble).copy(deep=True)
-
-        # if ds.name == 'tas':
-        #     vmax = np.max(np.abs(ds_sel.quantile((0.05, .95)))).data
-        #     boundaries = np.linspace(-vmax, vmax, 9)
-        #     # boundaries = np.linspace(-4, 4, 9)
-        #     boundaries = np.concatenate([boundaries[:4], [0], boundaries[4:]])
-        #     cmap = plt.cm.get_cmap('RdBu_r',len(boundaries))
-        #     colors = list(cmap_reds(np.arange(len(boundaries))))
-        #     colors[4] = 'gray'
-        #     cmap = mpl.colors.ListedColormap(colors, "")
-
         ds_sel.data[ds_sel.data == 0] = np.nan  # hack to set 0 distance to white
         cbar = ds_sel.plot.pcolormesh(
             ax=ax, transform=ccrs.PlateCarree(),
@@ -225,7 +212,7 @@ def plot_maps(ds, idx, cfg):
         logger.debug('Saved plot: {}.png'.format(filename))
 
 
-def plot_weights(ds, cfg, nn, dd, sort=False):
+def plot_weights(ds, cfg, nn, dd, sort_by='name'):
     """Lineplot of weights per model.
 
     Parameters
@@ -238,9 +225,11 @@ def plot_weights(ds, cfg, nn, dd, sort=False):
         Array of performance weights (numerator in weights equation)
     dd : array_like, shape (N,)
         Array of independence weights (denominator in weights equation)
-    sort : bool, optional
-        False: plot models alphabetically and cluster ensemble members.
-        True: plot models by weight (highest first)
+    sort_by : string, optional
+        name: plot models alphabetically and cluster ensemble members.
+        weights: plot models by weight (highest first)
+        performance: plot models by performance weight (highest first)
+        independence: plot models by independence weight (highest first)
     """
 
     path = os.path.join(cfg.plot_path, cfg.config)
@@ -252,21 +241,38 @@ def plot_weights(ds, cfg, nn, dd, sort=False):
     xx = np.arange(ds.dims['model_ensemble'])
     dd = 1/dd
 
-    if sort:
+    if sort_by == 'name':
+        sorter = np.arange(len(xx))  # no additional sorting
+        lw_w = 1
+        lw_p = .5
+        lw_i = .5
+    elif sort_by == 'weight':
         sorter = np.argsort(ds['weights'].data)[::-1]
-    else:
-        sorter = xx
+        lw_w = 1
+        lw_p = .5
+        lw_i = .5
+    elif sort_by == 'performance':
+        sorter = np.argsort(nn)[::-1]
+        lw_w = .5
+        lw_p = 1
+        lw_i = .5
+    elif sort_by == 'independence':
+        sorter = np.argsort(dd)[::-1]
+        lw_w = .5
+        lw_p = .5
+        lw_i = 1
 
     yy1 = ((nn*dd) / np.sum(nn*dd))[sorter]
     yy2 = (nn/nn.sum())[sorter]
     yy3 = (dd/dd.sum())[sorter]
 
-    ax.plot(xx, yy1, color='k', label='Weights')
-    ax.plot(xx, yy2, lw=.5, color='blue', label='Performance')
-    ax.plot(xx, yy3, lw=.5, color='green', label='Independence')
+    ax.plot(xx, yy1, lw=lw_w, color='k', label='Weights', marker='o')
+    ax.plot(xx, yy2, lw=lw_p, color='blue', label='Performance', marker='^')
+    ax.plot(xx, yy3, lw=lw_i, color='green', label='Independence', marker='v')
+    ax.axhline(1/len(xx), color='k', ls='--', label='Equal weight')
 
     model_ensemble = ds['model_ensemble'].data
-    if sort:
+    if sort_by in ['weight', 'performance', 'indepdendence']:
         ax.set_xticks(xx)
         ax.set_xticklabels(model_ensemble[sorter])
     else:  # plot xlabel only for first ensemble member
@@ -284,17 +290,14 @@ def plot_weights(ds, cfg, nn, dd, sort=False):
     ax.set_ylabel('Normalized weight', fontsize='large')
 
     ax.grid()
-    title = 'Weights per model ($\sigma_q$={:.2f}, $\sigma_i$={:.2f})'.format(
-        ds['sigma_q'].data, ds['sigma_i'].data)
-    ax.set_title(title)
+    title = 'Weights per model sorted by {} ($\sigma_q$={:.2f}, $\sigma_i$={:.2f})'.format(
+        sort_by, ds['sigma_q'].data, ds['sigma_i'].data)
+    ax.set_title(title, fontsize='x-large',)
 
-    plt.legend(title='Normalized Weights')
+    plt.legend(title=f'Normalized weights')
     plt.xticks(rotation=90)
 
-    if sort:
-        filename = os.path.join(path, 'weights_sorted.png')
-    else:
-        filename = os.path.join(path, 'weights.png')
+    filename = os.path.join(path, f'weights_by_{sort_by}.png')
     plt.savefig(filename, dpi=300)
     plt.close()
     logger.debug('Saved plot: {}'.format(filename))
