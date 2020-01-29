@@ -7,8 +7,8 @@
 Authors:
 - Lukas Brunner || lukas.brunner@env.ethz.ch
 
-Abstract:
-
+Abstract: Plot a distribution of weights per model. This is intended for
+the use on bootstrapped model variants.
 """
 import os
 import argparse
@@ -17,10 +17,9 @@ import xarray as xr
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from utils_python.xarray import area_weighted_mean
 from boxplot import boxplot
 
-SAVEPATH = os.path.dirname(os.path.abspath(__file__)) + '/../../plots/boxplots'
+SAVEPATH = os.path.dirname(os.path.abspath(__file__)) + '/../../plots/boxplots_weights'
 
 
 def read_input():
@@ -46,8 +45,8 @@ def read_input():
 
 def preprocess(ds):
     ds = ds['weights'].to_dataset(name='weights')
-    model_ensemble =  ds['model_ensemble'].data
-    models = [mm.split('_')[0] for mm in  model_ensemble]
+    model_ensemble = ds['model_ensemble'].data
+    models = [mm.split('_')[0] for mm in model_ensemble]
 
     _, idxs, counts = np.unique(models, return_counts=True, return_index=True)
     for idx, count in zip(idxs, counts):
