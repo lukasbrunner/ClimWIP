@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2020-01-25 11:57:55 lukas>
+Time-stamp: <2020-01-29 12:04:01 lukbrunn>
 
 (c) 2019 under a MIT License (https://mit-license.org)
 
@@ -17,57 +17,8 @@ import seaborn as sns
 from matplotlib.collections import PatchCollection
 from matplotlib.patches import Rectangle
 import matplotlib.patches as mpatches
-from statsmodels.stats.weightstats import DescrStatsW
 
-
-def quantile(data, quantiles, weights=None, ddof=0):
-    """Weighted quantiles based on statsmodels.stats.weightstats.DescrStatsW.
-
-    This is equivalent to quantile(data, quantiles, weights, interpolation='nearest').
-
-    Parameters
-    ----------
-    data : array-like, shape (N,) or (N, M)
-        Input data.
-    quantiles : array-like in [0, 1]
-        One or more quantile values to calculate.
-    weights=None : array-like, shape (N,), optional
-        Array of non-negative values to weight data.
-
-    Returns
-    -------
-    quantiles : ndarray
-
-    Package Info
-    ------------
-    http://www.statsmodels.org/dev/generated/statsmodels.stats.weightstats.DescrStatsW.html
-    http://www.statsmodels.org/dev/generated/statsmodels.stats.weightstats.DescrStatsW.quantile.html
-
-    Notes
-    -----
-    The 0. & 1. quantiles will always yield the full spread except if weights
-    are exactly zero, i.e.:
-    >> data, weights = np.arange(10.), np.ones(10)
-    >> weights[np.array([0, -1])] = 1.e-10
-    >> (data.min(), data.max()) == quantile(data, (0., 1.), weights)
-    >> True
-    >> weights[np.array([0, -1])] = 0.
-    >> (data.min(), data.max()) == quantile(data, (0., 1.), weights)
-    >> False
-
-    """
-    quantiles = np.array(quantiles)
-    # return some clear error messages
-    if np.any(quantiles < 0.) or np.any(quantiles > 1.):
-        raise ValueError('quantiles have to be in [0, 1]')
-    if weights is not None and np.any(weights < 0.):
-        raise ValueError('weights have to be non-negative')
-    if weights is not None and np.shape(data)[0] != len(weights):
-        raise ValueError('first dimension of data has to fit weights')
-    if np.all(np.isnan(data)):
-        return np.nan
-    data_stats = DescrStatsW(data, weights=weights)
-    return data_stats.quantile(quantiles, return_pandas=False).squeeze()
+from model_weighting.core.utils_xarray import quantile
 
 
 def boxplot(ax,
