@@ -38,6 +38,7 @@ import xarray as xr
 import __main__ as main
 from scipy import stats, signal
 from scipy.spatial.distance import pdist, squareform
+from statsmodels.stats.weightstats import DescrStatsW
 
 logger = logging.getLogger(__name__)
 
