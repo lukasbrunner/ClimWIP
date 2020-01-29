@@ -236,7 +236,6 @@ def get_filenames(cfg):
         for delete_model in delete_models:
             common_model_ensembles.remove(delete_model)
 
-
     selected_models, selected_model_ensembles = select_variants(
         common_model_ensembles, cfg.variants_use, cfg.variants_select)
 
