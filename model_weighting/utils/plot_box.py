@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2020-01-15 15:42:20 lukbrunn>
+Time-stamp: <2020-01-20 10:05:08 lukbrunn>
 
 (c) 2019 under a MIT License (https://mit-license.org)
 
@@ -49,6 +49,10 @@ def read_input():
     parser.add_argument(
         '--savename', '-s', dest='savename', type=str, default=None,
         help='')
+    parser.add_argument(
+        '--ylim', dest='ylim', default=None,
+        type=lambda x: x.split(', '),
+        help='')
     args = parser.parse_args()
 
     if args.labels is not None and len(args.labels) != len(args.filenames):
@@ -94,7 +98,8 @@ def main():
                 median=ds[varn],
                 mean=ds[varn],
                 box=ds[varn],
-                whis=ds[varn],  # (ds[varn].min(), ds[varn].max()),
+                whis=ds[varn],
+                # whis_quantiles=(.1, .9),
                 width=.8,
                 color=sns.xkcd_rgb['greyish'],
                 alpha=.3,
@@ -110,6 +115,7 @@ def main():
             box=ds[varn],
             whis=ds[varn],
             weights=ds['weights'],
+            # whis_quantiles=(.1, .9),
             width=.6,
             color=sns.xkcd_rgb['greyish'],
             alpha=1,
@@ -130,6 +136,9 @@ def main():
         unit = ''
     ax.set_ylabel(f'{varn}{unit}')
     ax.grid(axis='y')
+
+    if args.ylim is not None:
+        ax.set_ylim((float(args.ylim[0]), float(args.ylim[1])))
 
     if args.unweighted:
         plt.legend((h1, h2), ('unweighted', 'weighted'))
