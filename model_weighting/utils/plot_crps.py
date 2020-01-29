@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2020-01-17 15:30:59 lukbrunn>
+Time-stamp: <2020-01-29 11:24:07 lukbrunn>
 
 (c) 2019 under a MIT License (https://mit-license.org)
 
@@ -10,11 +10,10 @@ Authors:
 - Lukas Brunner || lukas.brunner@env.ethz.ch
 
 Abstract: Calculate the CRPS of the target variable for the future period
-based on a perfect model test.
+based on a perfect model test. This plots the CRPS of the area weighted mean!
 
 """
 import os
-import warnings
 import argparse
 import numpy as np
 import xarray as xr
@@ -27,7 +26,7 @@ from utils_python.xarray import area_weighted_mean
 from boxplot import boxplot
 
 
-SAVEPATH = os.path.dirname(os.path.abspath(__file__)) + '/../../plots/skill'
+SAVEPATH = os.path.dirname(os.path.abspath(__file__)) + '/../../plots/boxplots_skill'
 os.makedirs(SAVEPATH, exist_ok=True)
 
 
@@ -52,7 +51,7 @@ def read_input():
     parser.add_argument(
         '--exclude-ensembles', '-e', dest='exclude_ensembles', default=None,
         type=lambda x: x.split(', '),
-        help='')
+        help='{all, same, none}')
     parser.add_argument(
         '--savename', '-s', dest='savename', type=str, default=None,
         help='')
@@ -138,9 +137,7 @@ def crps_xarray(ds, varn, exclude_ensembles='all'):
                 'exclude_ensembles': exclude_ensembles},
         vectorize=True,
     )
-    if 'lat' in skill.dims:
-        skill = area_weighted_mean(skill, suppress_warning=True)
-    return skill
+    return skill.load()
 
 
 def read_data(filename, path):
@@ -160,17 +157,16 @@ def main():
     xticklabels = []
 
     for xx, ff in enumerate(args.filenames):
-        if ff == '':
+        if ff == '':  # it is allowed to give an empty filename to separate groups of boxes
             continue
 
         ds = read_data(ff, args.path)
         varn = ds.attrs['target']
-        region = ds.attrs['region']
 
         skill = crps_xarray(ds, varn, args.exclude_ensembles[xx])
 
-        idx_sort = skill.argsort().data[::-1]
-        print(f'{ds.attrs["config"]} {args.exclude_ensembles[xx]}')
+        # idx_sort = skill.argsort().data[::-1]
+        # print(f'{ds.attrs["config"]} {args.exclude_ensembles[xx]}')
         # print('Best CRPS:')
         # print('\n'.join([
         #     f' {ds["model_ensemble"].data[idx]}, {skill.data[idx]:.3f}' for idx in idx_sort[:3]]))
@@ -181,15 +177,16 @@ def main():
         weights = ds['weights'].mean('perfect_model_ensemble', skipna=True)
         weights /= weights.median('model_ensemble')
 
-        print('\n'.join([
-            f' {ds["model_ensemble"].data[idx]}, {skill.data[idx]:.3f}'  # , {weights[idx].data:.3f}'
-            for idx in idx_sort]))
+        # print('\n'.join([
+        #     f' {ds["perfect_model_ensemble"].data[idx]}, {skill.data[idx]:.3f}'  # , {weights[idx].data:.3f}'
+        #     for idx in idx_sort]))
 
         xticks.append(xx)
         xticklabels.append(ds.attrs['config'] + f' {args.exclude_ensembles[xx]}')
 
-        median = skill.median('perfect_model_ensemble').data
-        mean = skill.mean('perfect_model_ensemble').data
+        median = float(skill.median('perfect_model_ensemble').data)
+        mean = float(skill.mean('perfect_model_ensemble').data)
+        p25, p75 = skill.quantile((.25, .75), 'perfect_model_ensemble').data
         p05, p95 = skill.quantile((.05, .95), 'perfect_model_ensemble').data
 
         # sorter = skill.argsort()[::-1]
@@ -198,10 +195,10 @@ def main():
 
         boxplot(
             ax, xx,
-            mean=skill,
-            median=skill,
-            box=skill,
-            whis=skill,
+            mean=mean,
+            median=median,
+            box=(p25, p75),
+            whis=(p05, p95),
             width=.8,
             alpha=1,
             color=sns.xkcd_rgb['greyish'],
