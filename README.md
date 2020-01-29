@@ -28,7 +28,9 @@ Knutti, R. at al. (2017): A climate model projection weighting scheme accounting
 Requirements and Installation
 -----------------------------
 
-ClimWIP is written in Python and requires at least version 3.6. It can be cloned from this GitHub repository using
+ClimWIP is written in Python and requires at least version 3.6. It is currently run and tested in 3.8.1.
+
+To clone it from GitHub use
 
 <code>git clone https://git.iac.ethz.ch/model_weighting/model_weighting.git</code>
 
@@ -36,7 +38,7 @@ To install dependencies change into the newly created directory (by default with
 <code>conda env create -f environment.yml</code>
 
 Alternatively, create a new environment and install the required packages manually. This is easiest achieved by running the following:
-<code>conda create -n ClimWIP python=3.7 xarray=0.14.1 regionmask python-cdo netCDF4</code>
+<code>conda create -n ClimWIP python=3.8.1 xarray=0.14.1 regionmask python-cdo netCDF4</code>
 
 Activate the environment:
 <code>conda activate ClimWIP</code>
