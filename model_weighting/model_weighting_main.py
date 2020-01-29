@@ -215,7 +215,7 @@ def calc_performance(filenames, cfg):
 
         # if its a derived diagnostic: get first basic variable to get one of
         # the filenames (the others will be created by replacement)
-        varn = [*diagn.values()][0, 0] if isinstance(diagn, dict) else diagn
+        varn = [*diagn.values()][0][0] if isinstance(diagn, dict) else diagn
         diagn_key = [*diagn.keys()][0] if isinstance(diagn, dict) else diagn
 
         diagnostics = []
@@ -251,7 +251,7 @@ def calc_performance(filenames, cfg):
         for obs_path, obs_id in zip(cfg.obs_path, cfg.obs_id):
             filename = os.path.join(obs_path, f'{varn}_mon_{obs_id}_g025.nc')
 
-            with utils.LogTime(f'Calculate diagnostic for {obs_id}', level='info'):
+            with utils.LogTime(f'Calculate diagnostic for {obs_id}', level='debug'):
                 obs = calculate_diagnostic(
                     infile=filename,
                     diagn=diagn,
@@ -349,7 +349,7 @@ def calc_independence(filenames, cfg):
 
         # if its a derived diagnostic: get first basic variable to get one of
         # the filenames (the others will be created by replacement)
-        varn = [*diagn.values()][0, 0] if isinstance(diagn, dict) else diagn
+        varn = [*diagn.values()][0][0] if isinstance(diagn, dict) else diagn
         diagn_key = [*diagn.keys()][0] if isinstance(diagn, dict) else diagn
 
         diagnostics = []
@@ -400,6 +400,7 @@ def calc_independence(filenames, cfg):
 
         logger.debug('Calculate independence matrix... DONE')
 
+        logger.info(f'Calculate diagnostic {diagn}{cfg.independence_aggs[idx]}...DONE')
     return xr.concat(diffs, dim='diagnostic')
 
 
@@ -592,14 +593,17 @@ def calc_sigmas(targets, delta_i, unique_models, cfg, n_sigmas=50):
     sigma_base = np.nanmean(delta_i)  # an estimated sigma to start
 
     # a large value means all models have equal quality -> we want this as small as possible
-    if cfg.sigma_q == -99.:  # convention: equal weighting
-        sigmas_q = np.array([-99.])
+    if isinstance(cfg.sigma_q, (int, float)):
+        # if the user has given one of the sigmas use it
+        # NOTE: if sigma is -99 the corresponding weights will be set to 1 by convention
+        sigmas_q = np.array([cfg.sigma_q])
     else:
+        # otherwise allow a range
         sigmas_q = np.linspace(.2*sigma_base, 2*sigma_base, n_sigmas)
     # a large value means all models depend on each other, a small value means all models
     # are independent -> we want this ~delta_i
-    if cfg.sigma_i == -99.:  # convention: equal weighting
-        sigmas_i = np.array([-99.])
+    if isinstance(cfg.sigma_i, (int, float)):  # convention: equal weighting
+        sigmas_i = np.array([cfg.sigma_i])
     else:
         sigmas_i = np.linspace(.2*sigma_base, 2*sigma_base, n_sigmas)
 
@@ -700,7 +704,12 @@ def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg):
         weights = numerator/denominator
         weights /= weights.sum()
         dims = 'model_ensemble'
-    else:  # in this case delta_q is a matrix for each model as truth once
+    else:
+        # NOTE: without observations delta_q does not exist but we use the
+        # perfect model setting which is stored in delta_i and create weights
+        # for each case!
+        delta_q = delta_i
+        delta_q.name = 'delta_q'
         calculate_weights_matrix = np.vectorize(
             calculate_weights, signature='(n)->(n),(n)', excluded=[1, 2, 3])
         numerator, denominator = calculate_weights_matrix(delta_q, delta_i, sigma_q, sigma_i)
@@ -708,6 +717,7 @@ def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg):
         weights /= np.nansum(weights, axis=-1)
         dims = ('perfect_model_ensemble', 'model_ensemble')
 
+    # create this just to fill
     ds = delta_q.to_dataset().copy()
     ds = ds.rename({'delta_q': 'weights'})
     ds['weights'].data = weights
@@ -715,8 +725,8 @@ def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg):
     ds['weights_i'] = xr.DataArray(denominator, dims=dims)
     ds['delta_q'] = delta_q
     ds['delta_i'] = delta_i
-    ds['sigma_q'] = xr.DataArray([sigma_q])
-    ds['sigma_i'] = xr.DataArray([sigma_i])
+    ds['sigma_q'] = xr.DataArray(sigma_q)
+    ds['sigma_i'] = xr.DataArray(sigma_i)
 
     # add some metadata
     ds['model_ensemble'].attrs = {
@@ -795,16 +805,16 @@ def save_data(ds, targets, clim, filenames, cfg):
     # save additional variables for convenience
     if targets is not None:
         ds[cfg.target_diagnostic] = targets
+        ds['filename'] = xr.DataArray(
+            [*filenames[cfg.target_diagnostic].values()],
+            coords={'model_ensemble': [*filenames[cfg.target_diagnostic].keys()]},
+            dims='model_ensemble',
+            attrs={
+                'units': '1',
+                'long_name': 'Full Path and Filename',
+            })
     if clim is not None:
         ds[f'{cfg.target_diagnostic}_clim'] = clim
-    ds['filename'] = xr.DataArray(
-        [*filenames[cfg.target_diagnostic].values()],
-        coords={'model_ensemble': [*filenames[cfg.target_diagnostic].keys()]},
-        dims='model_ensemble',
-        attrs={
-            'units': '1',
-            'long_name': 'Full Path and Filename',
-        })
 
     # add some metadata
     ds.attrs.update({
@@ -834,7 +844,7 @@ def main(args):
     filenames, unique_models = get_filenames(cfg)
 
     log.start('main().calc_predictors(**kwargs)')
-    if cfg.performance_diagnostics is None:
+    if cfg.performance_diagnostics is None or cfg.obs_id is None:
         performance_diagnostics = None
     else:
         performance_diagnostics = calc_performance(filenames, cfg)
