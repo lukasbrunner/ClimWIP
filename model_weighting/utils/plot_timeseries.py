@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2020-01-29 12:01:58 lukbrunn>
+Time-stamp: <2020-01-30 08:44:36 lukbrunn>
 
 (c) 2019 under a MIT License (https://mit-license.org)
 
@@ -32,7 +32,7 @@ period_ref = slice('1995', '2014')
 PLOTPATH = os.path.join(
     os.path.dirname(os.path.realpath(__file__)),
     '../../plots/timeseries/')
-
+os.makedirs(PLOTPATH, exist_ok=True)
 
 def read_input():
     """Read the given configuration from the config file"""

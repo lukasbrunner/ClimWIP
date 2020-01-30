@@ -22,6 +22,7 @@ from utils_python.xarray import area_weighted_mean
 from boxplot import boxplot, quantile
 
 SAVEPATH = os.path.dirname(os.path.abspath(__file__)) + '/../../plots/boxplots_bootstrap'
+os.makedirs(SAVEPATH, exist_ok=True)
 
 
 def read_input():
@@ -90,34 +91,40 @@ def main():
             quantile(ds_sel[varn].data, (.1, .25, .5, .75, .9), ds_sel['weights'].data)) + [
                 np.average(ds_sel[varn].data, weights=ds_sel['weights'].data)])
 
+        # import ipdb; ipdb.set_trace()
+
         if args.unweighted:
             h1 = boxplot(
                 ax, idx,
                 median=ds_sel[varn],
-                mean=ds_sel[varn],
+                # mean=ds_sel[varn],
                 box=ds_sel[varn],
-                whis=quantile(ds_sel[varn].data, (.1, .9)),
+                whis=ds_sel[varn],
+                whis_quantiles=(.1, .9),
                 width=.8,
                 color=sns.xkcd_rgb['greyish'],
                 alpha=.3,
+                showcaps=False,
                 # median_kwargs={'linestyle': '-', 'color': 'k', 'linewidth': .5},
                 # mean_kwargs={'linestyle': '-', 'color': 'k', 'linewidth': .5},
-                # whis_kwargs={'caps_width': .6},
+                whis_kwargs={'lw': .7},
             )
 
         h2 = boxplot(
             ax, idx,
             median=ds_sel[varn],
-            mean=ds_sel[varn],
+            # mean=ds_sel[varn],
             box=ds_sel[varn],
-            whis=quantile(ds_sel[varn].data, (.1, .9), ds_sel['weights']),
+            whis=ds_sel[varn],
+            whis_quantiles=(.1, .9),
             weights=ds_sel['weights'],
-            width=.6,
+            width=.4,
             color=sns.xkcd_rgb['greyish'],
             alpha=1,
             # median_kwargs={'linestyle': '-', 'color': 'k', 'linewidth': .5},
             # mean_kwargs={'linestyle': '-', 'color': 'k', 'linewidth': .5},
-            # whis_kwargs={'caps_width': .6},
+            showcaps=False,
+            whis_kwargs={'lw': .5},
         )
 
     if args.mean_:
@@ -127,29 +134,31 @@ def main():
 
         if args.unweighted:
             h1 = boxplot(
-                ax, idx+2,
+                ax, idx+3,
                 median=percentiles[2],
-                mean=percentiles[-1],
+                # mean=percentiles[-1],
                 box=percentiles[np.array([1, 3])],
                 whis=percentiles[np.array([0, 4])],
-                width=.8,
+                width=1.6,
                 color=sns.xkcd_rgb['greyish'],
                 alpha=.3,
+                showcaps=False,
                 # median_kwargs={'linestyle': '-', 'color': 'k', 'linewidth': .5},
                 # mean_kwargs={'linestyle': '-', 'color': 'k', 'linewidth': .5},
                 # whis_kwargs={'caps_width': .6},
             )
 
         h2 = boxplot(
-            ax, idx+2,
+            ax, idx+3,
             median=percentiles_w[2],
-            mean=percentiles_w[-1],
+            # mean=percentiles_w[-1],
             box=percentiles_w[np.array([1, 3])],
             whis=percentiles_w[np.array([0, 4])],
             weights=ds_sel['weights'],
-            width=.6,
+            width=1.2,
             color=sns.xkcd_rgb['greyish'],
             alpha=1,
+            showcaps=False,
             # median_kwargs={'linestyle': '-', 'color': 'k', 'linewidth': .5},
             # mean_kwargs={'linestyle': '-', 'color': 'k', 'linewidth': .5},
             # whis_kwargs={'caps_width': .6},
@@ -159,29 +168,32 @@ def main():
         ds_mean = ds.mean('realization')
         if args.unweighted:
             h1 = boxplot(
-                ax, idx+3,
+                ax, idx+5,
                 median=ds_mean[varn],
-                mean=ds_mean[varn],
+                # mean=ds_mean[varn],
                 box=ds_mean[varn],
-                whis=quantile(ds_mean[varn].data, (.1, .9)),
-                width=.8,
+                whis=ds_mean[varn],
+                width=1.6,
                 color=sns.xkcd_rgb['greyish'],
                 alpha=.3,
+                showcaps=False,
                 # median_kwargs={'linestyle': '-', 'color': 'k', 'linewidth': .5},
                 # mean_kwargs={'linestyle': '-', 'color': 'k', 'linewidth': .5},
                 # whis_kwargs={'caps_width': .6},
             )
 
         h2 = boxplot(
-            ax, idx+3,
+            ax, idx+5,
             median=ds_mean[varn],
-            mean=ds_mean[varn],
+            # mean=ds_mean[varn],
             box=ds_mean[varn],
-            whis=quantile(ds_mean[varn].data, (.1, .9), ds_mean['weights']),
+            whis=ds_mean[varn].data,
+            whis_quantiles=(.1, .9),
             weights=ds_mean['weights'],
-            width=.6,
+            width=1.2,
             color=sns.xkcd_rgb['greyish'],
             alpha=1,
+            showcaps=False,
             # median_kwargs={'linestyle': '-', 'color': 'k', 'linewidth': .5},
             # mean_kwargs={'linestyle': '-', 'color': 'k', 'linewidth': .5},
             # whis_kwargs={'caps_width': .6},
@@ -217,3 +229,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    #

@@ -20,6 +20,7 @@ import seaborn as sns
 from boxplot import boxplot
 
 SAVEPATH = os.path.dirname(os.path.abspath(__file__)) + '/../../plots/boxplots_weights'
+os.makedirs(SAVEPATH, exist_ok=True)
 
 
 def read_input():
@@ -40,6 +41,7 @@ def read_input():
         '--savename', '-s', dest='savename', type=str, default=None,
         help='')
     args = parser.parse_args()
+
     return args
 
 
@@ -91,22 +93,12 @@ def main():
         nr = len(np.unique(model_ensemble.sel(model=model).data))
         xticklabels.append(f'{model} ({nr})')
 
+    ax.axhline(1./len(models), ls='--', color='k')
     ax.set_xticks(range(len(ds['model'])))
     ax.set_xticklabels(xticklabels, rotation=45, ha='right', fontsize='x-small')
 
     ax.set_ylabel('Weights (1)')
     ax.grid(axis='y')
-
-    noramlizer = ds.mean('realization').median('model').data
-    yticks = ax.get_yticks()
-    yticklabels = np.around(yticks / noramlizer, 2)
-
-    ax2 = ax.twinx()
-    ax.set_ylim(0, yticks[-1])
-    ax2.set_yticks(yticks)
-    ax2.set_ylim(0, yticks[-1])
-    ax2.set_yticklabels(yticklabels)
-    ax2.set_ylabel('Weights scaled by median weight (1)')
 
     if args.title is not None:
         plt.title(args.title)
@@ -115,7 +107,6 @@ def main():
         plt.show()
     else:
         plt.savefig(os.path.join(SAVEPATH, args.savename), dpi=300)
-
 
 
 if __name__ == '__main__':

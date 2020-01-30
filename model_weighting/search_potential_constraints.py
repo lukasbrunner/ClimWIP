@@ -17,18 +17,18 @@ import traceback
 import numpy as np
 import xarray as xr
 from scipy import stats
-from sklearn.linear_model import TheilSenRegressor as TSR
+# from sklearn.linear_model import TheilSenRegressor as TSR
 import matplotlib.pyplot as plt
 import seaborn as sns
 from collections import OrderedDict
 
-from sklearn import linear_model
+# from sklearn import linear_model
 from sklearn.linear_model import (LinearRegression,
                                   Ridge,
                                   RidgeCV,
                                   Lasso,
                                   LassoCV,
-                                  RandomizedLasso,
+                                  # RandomizedLasso,
                                   BayesianRidge,
                                   TheilSenRegressor)
 from sklearn.feature_selection import f_regression
@@ -41,6 +41,7 @@ from core.utils_xarray import area_weighted_mean
 
 
 logger = logging.getLogger(__name__)
+
 
 def read_args():
     """Read the given configuration from the config file"""
@@ -113,7 +114,7 @@ def calc_predictor(filenames, idx, cfg):
     base_path = os.path.join(cfg.save_path, diagn)
     os.makedirs(base_path, exist_ok=True)
 
-    varn = [*diagn.values()][0, 0] if isinstance(diagn, dict) else diagn
+    varn = [*diagn.values()][0][0] if isinstance(diagn, dict) else diagn
     diagn_key = [*diagn.keys()][0] if isinstance(diagn, dict) else diagn
 
     diagnostics = []
@@ -144,7 +145,7 @@ def calc_predictor(filenames, idx, cfg):
 def calc_obs(diagn, idx, cfg):
     base_path = os.path.join(cfg.save_path, diagn)
 
-    varn = [*diagn.values()][0, 0] if isinstance(diagn, dict) else diagn
+    varn = [*diagn.values()][0][0] if isinstance(diagn, dict) else diagn
     diagn_key = [*diagn.keys()][0] if isinstance(diagn, dict) else diagn
 
     obs_list = []
@@ -324,6 +325,7 @@ def main():
     nr_models = []
     pointless = []
     nr_obs = []
+    cfg.independence_diagnostics = None
     for idx, diagn in enumerate(diagns):
         key = f'{diagn}{cfg.performance_aggs[idx]}'
         try:

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2020-01-20 10:05:08 lukbrunn>
+Time-stamp: <2020-01-30 08:44:57 lukbrunn>
 
 (c) 2019 under a MIT License (https://mit-license.org)
 
@@ -23,7 +23,7 @@ from utils_python.xarray import area_weighted_mean
 from boxplot import boxplot
 
 SAVEPATH = os.path.dirname(os.path.abspath(__file__)) + '/../../plots/boxplots'
-
+os.makedirs(SAVEPATH, exist_ok=True)
 
 def read_input():
     """Read the given configuration from the config file"""
