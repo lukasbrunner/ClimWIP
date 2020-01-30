@@ -422,6 +422,10 @@ def _normalize(data, normalize_by):
         else:
             raise ValueError
 
+    # # NOTE: optionally write out the normalizer for later use
+    # with open('../data/normalizer_tasANOM-GLOBAL.tex', 'a') as ff:
+    #     ff.write(f'{normalizer}\n')
+
     return data / normalizer
 
 
@@ -458,11 +462,14 @@ def calc_deltas(performance_diagnostics, independence_diagnostics, cfg):
         input_core_dims=[['model_ensemble', 'perfect_model_ensemble'], ['temp']],
         output_core_dims=[['model_ensemble', 'perfect_model_ensemble']],
         vectorize=True)
-    independence_diagnostics_mean = xr.apply_ufunc(
-        _mean, independence_diagnostics,
-        input_core_dims=[['diagnostic']],
-        vectorize=True,
-        kwargs={'weights': cfg.independence_weights})
+    if len(independence_diagnostics['diagnostic']) > 1:
+        independence_diagnostics_mean = xr.apply_ufunc(
+            _mean, independence_diagnostics,
+            input_core_dims=[['diagnostic']],
+            vectorize=True,
+            kwargs={'weights': cfg.independence_weights})
+    else:
+        independence_diagnostics_mean = independence_diagnostics.squeeze()
     independence_diagnostics_mean.name = 'delta_i'
 
     if cfg.plot:
@@ -482,11 +489,14 @@ def calc_deltas(performance_diagnostics, independence_diagnostics, cfg):
         input_core_dims=[['model_ensemble'], ['temp']],
         output_core_dims=[['model_ensemble']],
         vectorize=True)
-    performance_diagnostics_mean = xr.apply_ufunc(
-        _mean, performance_diagnostics,
-        input_core_dims=[['diagnostic']],
-        vectorize=True,
-        kwargs={'weights': cfg.performance_weights})
+    if len(performance_diagnostics['diagnostic']) > 1:
+        performance_diagnostics_mean = xr.apply_ufunc(
+            _mean, performance_diagnostics,
+            input_core_dims=[['diagnostic']],
+            vectorize=True,
+            kwargs={'weights': cfg.performance_weights})
+    else:
+        performance_diagnostics_mean = performance_diagnostics.squeeze()
     performance_diagnostics_mean.name = 'delta_q'
 
     if cfg.plot:
