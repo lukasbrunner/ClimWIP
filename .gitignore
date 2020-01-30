@@ -10,6 +10,8 @@ model_weighting/configs/
 model_weighting/logfiles/
 model_weighting/shapefiles/
 plot*/
+data/
+model_weighting/scripts/
 model_weighting/utils/arichve/
 model_weighting/utils/scripts/
 
