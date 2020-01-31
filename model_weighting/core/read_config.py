@@ -413,7 +413,11 @@ def process_performance_parameters(cfg):
         if not isinstance(cfg[param], list):
             raise ValueError
         if len(cfg[param]) != size:
-            raise ValueError
+            errmsg = ' '.join([
+                'All performance_* parameters need to have same length',
+                f'{param} has {len(cfg[param])} but should have {size}'])
+            logger.error(errmsg)
+            raise ValueError(errmsg)
         if not np.all([isinstance(value, performance_parameters[param])
                        for value in cfg[param]]):
             raise ValueError
