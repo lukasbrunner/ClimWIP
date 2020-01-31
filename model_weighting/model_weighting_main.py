@@ -473,8 +473,8 @@ def calc_deltas(performance_diagnostics, independence_diagnostics, cfg):
     independence_diagnostics_mean.name = 'delta_i'
 
     if cfg.plot:
-        max_ = np.max([dd.max() for dd in independence_diagnostics])
-        min_ = np.min([dd.min() for dd in independence_diagnostics])
+        max_ = np.max([np.nanpercentile(dd, 95) for dd in independence_diagnostics])
+        min_ = np.min([np.nanpercentile(dd, 5) for dd in independence_diagnostics])
         plot_rmse(independence_diagnostics_mean, 'mean', cfg, 'independence', min_, max_)
         for idx, diag in enumerate(independence_diagnostics):
             plot_rmse(diag, idx, cfg, 'independence', min_, max_)
@@ -500,9 +500,8 @@ def calc_deltas(performance_diagnostics, independence_diagnostics, cfg):
     performance_diagnostics_mean.name = 'delta_q'
 
     if cfg.plot:
-        # NOTE: I assume the min_, max_ from the model-model distances will always be wider
-        # max_ = np.max([dd.max() for dd in performance_diagnostics])
-        # min_ = np.min([dd.min() for dd in performance_diagnostics])
+        max_ = np.max([np.percentile(dd, 95) for dd in performance_diagnostics])
+        min_ = np.min([np.percentile(dd, 5) for dd in performance_diagnostics])
         plot_rmse(performance_diagnostics_mean, 'mean', cfg, 'performance', min_, max_)
         for idx, diag in enumerate(performance_diagnostics):
             plot_rmse(diag, idx, cfg, 'performance', min_, max_)
