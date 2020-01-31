@@ -66,6 +66,8 @@ def plot_rmse(da, idx, cfg, what, min_, max_):
     elif what == 'independence':
         yy = xx
 
+    p25, p75 = np.nanpercentile(data, (10, 90))
+
     if isinstance(idx, int):  # single diagnostics
         if what == 'performance':
             diagn = f'{cfg.performance_diagnostics[idx]}{cfg.performance_aggs[idx]}'
@@ -73,10 +75,10 @@ def plot_rmse(da, idx, cfg, what, min_, max_):
         elif what == 'independence':
             diagn = f'{cfg.independence_diagnostics[idx]}{cfg.independence_aggs[idx]}'
             period = f'{cfg.independence_startyears[idx]}-{cfg.independence_endyears[idx]}'
-        title = 'Normalized {} RMSE {} {}'.format(what, diagn, period)
+        title = 'Normalized {} RMSE {} {}; 50% range ({:.2f}-{:.2f})'.format(what, diagn, period, p25, p75)
         filename = 'rmse_{}_{}'.format(what, diagn)
     else:  # mean diagnostic
-        title = 'Mean RMSE all diagnostics'
+        title = 'Mean RMSE all diagnostics; 50% range ({:.2f}-{:.2f})'.format(p25, p75)
         filename = 'rmse_{}_mean'.format(what)
 
     path = os.path.join(cfg.plot_path, cfg.config)
@@ -182,25 +184,30 @@ def plot_maps(ds, idx, cfg):
         ds_sel = ds.sel(model_ensemble=model_ensemble).copy(deep=True)
         ds_sel.data[ds_sel.data == 0] = np.nan  # hack to set 0 distance to white
         cbar = ds_sel.plot.pcolormesh(
-            ax=ax, transform=ccrs.PlateCarree(),
-            center=0, levels=9, robust=True, extend='both',
+            ax=ax,
+            transform=ccrs.PlateCarree(),
+            center=0,
+            levels=9,
+            robust=True,
+            # vmax=160,
+            extend='both',
             cbar_kwargs={'orientation': 'horizontal',
                          'pad': .1})
         cbar.cmap.set_bad('white')  # set 0 distance to white
         ax.coastlines()
         ax.add_feature(cartopy.feature.BORDERS)
         xx, yy = np.meshgrid(ds['lon'].data[1:-1], ds['lat'].data[1:-1])
-        ax.scatter(xx, yy, s=1, color='k')
+        if cfg.performance_regions[idx] != 'GLOBAL' or not cfg.performancs_masks[idx]:
+            ax.scatter(xx, yy, s=1, color='k')
 
-        longitude_formatter = LongitudeFormatter()
-        latitude_formatter = LatitudeFormatter()
-
-        ax.set_xticks(np.arange(ds['lon'].min()-5, ds['lon'].max()+11, 10), crs=proj)
-        ax.set_yticks(np.arange(ds['lat'].min()-5, ds['lat'].max()+11, 10), crs=proj)
-        ax.xaxis.set_ticks_position('both')
-        ax.yaxis.set_ticks_position('both')
-        ax.xaxis.set_major_formatter(longitude_formatter)
-        ax.yaxis.set_major_formatter(latitude_formatter)
+        # longitude_formatter = LongitudeFormatter()
+        # latitude_formatter = LatitudeFormatter()
+        # ax.set_xticks(np.arange(ds['lon'].min()-5, ds['lon'].max()+11, 10), crs=proj)
+        # ax.set_yticks(np.arange(ds['lat'].min()-5, ds['lat'].max()+11, 10), crs=proj)
+        # ax.xaxis.set_ticks_position('both')
+        # ax.yaxis.set_ticks_position('both')
+        # ax.xaxis.set_major_formatter(longitude_formatter)
+        # ax.yaxis.set_major_formatter(latitude_formatter)
         ax.set_xlabel('')
         ax.set_ylabel('')
 
