@@ -25,7 +25,7 @@ from model_weighting.core.utils import read_config, log_parser
 
 from boxplot import boxplot
 
-SAVEPATH = os.path.dirname(os.path.abspath(__file__)) + '/../../plots/boxplots_skill'
+SAVEPATH = os.path.dirname(os.path.abspath(__file__)) + '/../../plots/boxplots_pseudo_obs'
 os.makedirs(SAVEPATH, exist_ok=True)
 
 
@@ -60,7 +60,7 @@ def read_input():
         help='')
     args = parser.parse_args()
 
-    if args.labels is not None and len(args.labels) != len(args.filenames):
+    if args.labels is not None and len(args.labels) != len(args.filename_patterns):
         logmsg = '--labels needs to have same length as filenames! Falling back to default'
         args.labels = None
         print(logmsg)
@@ -114,12 +114,14 @@ def read_obs(ds, cfg):
 
         filename = os.path.join(obs_path, '{}_mon_{}_g025.nc'.format(cfg.target_diagnostic, obs_id))
         ds_var = xr.open_dataset(filename, use_cftime=True)[cfg.target_diagnostic].load()
-        try:
-            filename = os.path.join(obs_path, '{}_mon_{}_g025_future.nc'.format(cfg.target_diagnostic, obs_id))
-            ds_var2 = xr.open_dataset(filename, use_cftime=True).load()[cfg.target_diagnostic]
-            ds_var = xr.concat([ds_var, ds_var2], dim='time')
-        except FileNotFoundError:
-            pass
+        if '_CMIP6' in obs_id:
+            try:
+                filename = os.path.join(obs_path, '{}_mon_{}_g025_future.nc'.format(
+                    cfg.target_diagnostic, obs_id))
+                ds_var2 = xr.open_dataset(filename, use_cftime=True).load()[cfg.target_diagnostic]
+                ds_var = xr.concat([ds_var, ds_var2], dim='time')
+            except FileNotFoundError:
+                pass
 
         ds_var = ds_var.drop_vars('height', errors='ignore')
 
@@ -161,6 +163,7 @@ def main():
         filename_pattern = os.path.join(args.path, filename_pattern)
         filenames = glob(filename_pattern)
         skill_list = []
+        assert len(filenames) > 0, filename_pattern
         for filename in filenames:
             ds = xr.open_dataset(filename)
             varn = ds.attrs['target']
@@ -204,14 +207,20 @@ def main():
     ax.axhline(0, color='k', zorder=2)
 
     ax.set_xticks(xticks)
-    ax.set_xticklabels(xticklabels, rotation=30, ha='right')
+    if args.labels is None:
+        ax.set_xticklabels(xticklabels, rotation=30, ha='right')
+    else:
+        ax.set_xticklabels(args.labels, rotation=30, ha='right')
 
     ax.set_ylim(-100, 100)
     ax.set_ylabel('Relative CRPS change (%)', labelpad=-3)
 
     plt.title(f'Change in CRPS')
 
-    plt.savefig(os.path.join(SAVEPATH, 'test_crps_pseudo_obs.png'), dpi=300)
+    if args.savename is None:
+        plt.show()
+    else:
+        plt.savefig(os.path.join(SAVEPATH, args.savename), dpi=300)
 
 
 if __name__ == '__main__':

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2020-01-29 14:33:45 lukbrunn>
+Time-stamp: <2020-01-31 08:10:33 lukbrunn>
 
 (c) 2019 under a MIT License (https://mit-license.org)
 
@@ -48,10 +48,10 @@ def read_input():
         dest='filenames', type=str, nargs='+',
         help='Valid weights file (should end with .nc)')
     parser.add_argument(
-        '--plot-type', '-t', dest='ext', default='png', type=str,
+        '--savename-pattern', '-s', dest='savename', type=str, default=None,
         help=' '.join([
-            'A valid plot extension specifiying the file type. A special case',
-            'is "show" which will call plt.show() instead of saving']))
+            'An identifier to be appended to the automatically created',
+            'filename. Should include a valid extension (e.g., .png)']))
     args = parser.parse_args()
 
     if len(args.filenames) == 1:
@@ -70,12 +70,14 @@ def read_obs(ds, cfg):
         filename = os.path.join(obs_path, '{}_mon_{}_g025.nc'.format(cfg.target_diagnostic, obs_id))
         ds_var = xr.open_dataset(filename, use_cftime=True)[cfg.target_diagnostic].load()
 
-        try:
-            filename = os.path.join(obs_path, '{}_mon_{}_g025_future.nc'.format(cfg.target_diagnostic, obs_id))
-            ds_var2 = xr.open_dataset(filename, use_cftime=True)[cfg.target_diagnostic].load()
-            ds_var = xr.concat([ds_var, ds_var2], dim='time')
-        except FileNotFoundError:
-            return None
+        if '_CMIP6' in obs_id:
+            try:
+                filename = os.path.join(obs_path, '{}_mon_{}_g025_future.nc'.format(
+                    cfg.target_diagnostic, obs_id))
+                ds_var2 = xr.open_dataset(filename, use_cftime=True)[cfg.target_diagnostic].load()
+                ds_var = xr.concat([ds_var, ds_var2], dim='time')
+            except FileNotFoundError:
+                return None
 
         ds_var = ds_var.drop_vars('height', errors='ignore')
 
@@ -459,43 +461,64 @@ def main():
     nr = len(skill['perfect_model_ensemble'].data)
     global_ = region == 'GLOBAL'
 
-    fn = 'Mapplots_CRPS_mean.png'
+    if args.savename is None:
+        fn = None
+    else:
+        fn = f'Mapplots_CRPS_mean_{args.savename}'
     plot_maps_mean(skill['CRPS'].mean('perfect_model_ensemble'),
                    global_,
                    fn,
                    f'Mean (N={nr}) relative CRPS change', cmap='PuOr_r')
 
-    fn = 'Mapplots_Bias_mean.png'
+    if args.savename is None:
+        fn = None
+    else:
+        fn = f'Mapplots_Bias_mean_{args.savename}'
     plot_maps_mean(skill['Bias'].mean('perfect_model_ensemble'),
                    global_,
                    fn,
                    f'Mean (N={nr}) relative Bias change')
 
-    fn = 'Mapplots_RMSE_mean.png'
+    if args.savename is None:
+        fn = None
+    else:
+        fn = f'Mapplots_RMSE_mean_{args.savename}'
     plot_maps_mean(skill['RMSE'].mean('perfect_model_ensemble'),
                    global_,
                    fn,
                    f'Mean (N={nr}) relative RMSE change')
 
-    fn = 'Mapplots_CRPS_median.png'
+    if args.savename is None:
+        fn = None
+    else:
+        fn = f'Mapplots_CRPS_median_{args.savename}'
     plot_maps_mean(skill['CRPS'].median('perfect_model_ensemble'),
                    global_,
                    fn,
                    f'Median (N={nr}) relative CRPS change', cmap='PuOr_r')
 
-    fn = 'Mapplots_Bias_median.png'
+    if args.savename is None:
+        fn = None
+    else:
+        fn = f'Mapplots_Bias_median_{args.savename}'
     plot_maps_mean(skill['Bias'].median('perfect_model_ensemble'),
                    global_,
                    fn,
                    f'Median (N={nr}) relative Bias change')
 
-    fn = 'Mapplots_RMSE_median.png'
+    if args.savename is None:
+        fn = None
+    else:
+        fn = f'Mapplots_RMSE_median_{args.savename}'
     plot_maps_mean(skill['RMSE'].median('perfect_model_ensemble'),
                    global_,
                    fn,
                    f'Median (N={nr}) relative RMSE change')
 
-    fn = 'Mapplots_CRPS_p25.png'
+    if args.savename is None:
+        fn = None
+    else:
+        fn = f'Mapplots_CRPS_p25_{args.savename}'
     plot_maps_mean(skill['CRPS'].quantile(.25, 'perfect_model_ensemble'),
                    global_,
                    fn,
