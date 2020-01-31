@@ -46,7 +46,10 @@ def read_input():
 
 
 def preprocess(ds):
-    ds = ds['weights'].to_dataset(name='weights')
+    nn = ds['weights_q']
+    dd = ds['weights_i']
+    ds = (nn/dd).to_dataset(name='weights')
+    # ds = ds['weights'].to_dataset(name='weights')
     model_ensemble = ds['model_ensemble'].data
     models = [mm.split('_')[0] for mm in model_ensemble]
 
@@ -78,26 +81,51 @@ def main():
     ds = ds.sortby(ds.mean('realization'), ascending=False)
 
     models = ds['model'].data
+
     xticklabels = []
     for idx, model in enumerate(models):
+        data = ds.sel(model=model)
+
+        # --- variant 1 ---
+        # pass
+
+        # --- variant 2 ---
+        # scale to x2, /2 etc. like in Brunner et al. 2019
+        # data /= np.median(ds.median('realization').data)
+        # data[data < 1.] = 1 - 1/data[data < 1.]
+        # data[data >= 1] -= 1
+
+        # --- variant 3 ---
+        # normalizer = ds.sel(model=model).median('realization').data
+        # data /= normalizer
+        nr = len(np.unique(model_ensemble.sel(model=model).data))
+
         boxplot(
             ax, idx,
-            median=ds.sel(model=model),
-            mean=ds.sel(model=model),
-            box=ds.sel(model=model),
-            whis=ds.sel(model=model),
+            data=data,
+            box_quantiles=(0, 1),
+            whis=None,
             width=.6,
-            color=sns.xkcd_rgb['greyish'],
+            color=sns.xkcd_rgb['greyish'] if nr == 1 else 'blue',
             alpha=1,
         )
-        nr = len(np.unique(model_ensemble.sel(model=model).data))
         xticklabels.append(f'{model} ({nr})')
 
-    ax.axhline(1./len(models), ls='--', color='k')
+    # ax.axhline(1./len(models), ls='--', color='k')
     ax.set_xticks(range(len(ds['model'])))
     ax.set_xticklabels(xticklabels, rotation=45, ha='right', fontsize='x-small')
 
-    ax.set_ylabel('Weights (1)')
+    # --- variant 1 ---
+    ax.set_ylabel('Not normalized weights (1)')
+
+    # --- variant 2 ---
+    # ax.set_ylim(-5, 5)
+    # ax.set_yticks(np.arange(-5, 6, 1))
+    # ax.set_yticklabels(['/6', '/5', '/4', '/3', '/2', '1', 'x2', 'x3', 'x4', 'x5', 'x6'])
+    # # ax.set_yticklabels(['0.25', '0.33', '0.5', '1', '2', '3', '4'])
+    # ax.set_ylabel('Model weight relative to the median')
+    # ---
+
     ax.grid(axis='y')
 
     if args.title is not None:
