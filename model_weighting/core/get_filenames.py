@@ -247,4 +247,4 @@ def get_filenames(cfg):
     logger.info(', '.join(selected_models))
     logger.info(', '.join(selected_model_ensembles))
 
-    return filenames, np.array(selected_model_ensembles)
+    return filenames
