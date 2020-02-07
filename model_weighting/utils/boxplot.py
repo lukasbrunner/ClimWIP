@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2020-01-29 12:04:01 lukbrunn>
+Time-stamp: <2020-02-05 15:59:30 lukbrunn>
 
 (c) 2019 under a MIT License (https://mit-license.org)
 
@@ -28,6 +28,7 @@ def boxplot(ax,
             mean=None,
             box=None,
             whis=None,
+            dots=None,
             weights=None,
             width=.8,
             color=sns.xkcd_rgb['greyish'],
@@ -40,7 +41,9 @@ def boxplot(ax,
             whis_quantiles=(.05, .95),
             median_kwargs=None,
             mean_kwargs=None,
-            whis_kwargs=None):
+            whis_kwargs=None,
+            dots_kwargs=None,
+            dots_sizes=None):
     """
     A custom-mad boxplot routine based on user set statistics.
 
@@ -60,6 +63,8 @@ def boxplot(ax,
         Extend of the box or data to calculate the box.
     whis : tuple of float or array-like, shape (2), optional
         Extend of the whiskers or data to calculate the whiskers.
+    dots : array-like, optional
+        An array of dots to plot.
     width : float, optional
         Width of box, median, mean, and caps (caps have .4*width).
     color : string, optional
@@ -75,12 +80,21 @@ def boxplot(ax,
     whis_kwargs : dict, optional
         Keyword arguments passed on to ax.hlines and ax.vlines for whiskers
         and caps.
+    dots_kwargs : dict, optional
+        Keyword arguments passed on to ax.scatter for the dots.
+    dots_sizes : tuple of (min, max), optional
     """
     if data is not None:
-        mean = data
-        median = data
-        box = data
-        whis = data
+        if mean is None:
+            mean = data
+        if median is None:
+            median = data
+        if box is None:
+            box = data
+        if whis is None:
+            whis = data
+        if dots is None:
+            dots = data
 
     if mean is not None and not isinstance(mean, (int, float)):
         mean = np.average(mean, weights=weights)
@@ -103,6 +117,8 @@ def boxplot(ax,
         mean_kwargs = {}
     if whis_kwargs is None:
         whis_kwargs = {}
+    if dots_kwargs is None:
+        dots_kwargs = {}
     if 'colors' not in median_kwargs.keys():
         median_kwargs['colors'] = 'k'
     if 'colors' not in mean_kwargs.keys():
@@ -130,12 +146,21 @@ def boxplot(ax,
     if 'linestyle' not in mean_kwargs.keys():
         if median is not None:
             mean_kwargs['linestyle'] = '--'
+    if 'color' not in dots_kwargs.keys() and 'c' not in dots_kwargs.keys():
+        dots_kwargs['color'] = 'k'
+    if 's' not in dots_kwargs.keys():
+        dots_kwargs['s'] = 1
+        if weights is not None and dots_sizes is not None:
+            sizes = np.interp(weights, [np.min(weights), np.max(weights)], dots_sizes)
+            dots_kwargs['s'] = sizes**2
 
     handle = [mpatches.Patch(color=color, alpha=alpha)]
     if median is not None:
         handle.append(ax.hlines([], [], [], **median_kwargs))
     if mean is not None:
         handle.append(ax.hlines([], [], [], **mean_kwargs))
+    if dots is not None:
+        handle.append(ax.scatter([], [], **dots_kwargs))
     if return_handle:
         return tuple(handle)
 
@@ -157,6 +182,13 @@ def boxplot(ax,
         x0_mean = x0 + (1 - mean_width)*width*.5
         x1_mean = x1 - (1 - mean_width)*width*.5
         ax.hlines(mean, x0_mean, x1_mean, zorder=zorder, **mean_kwargs)
+
+    if dots is not None:
+        if len(dots) == 1:
+            xx = pos
+        else:
+            xx = np.random.RandomState(0).uniform(pos - .4*width, pos + .4*width, len(dots))
+        patch = ax.scatter(xx, dots, zorder=zorder, **dots_kwargs)
 
     if whis is not None:  # plot whiskers
         if box is None:
