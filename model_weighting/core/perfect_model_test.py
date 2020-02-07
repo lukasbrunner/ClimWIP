@@ -32,7 +32,6 @@ for more information.
 import numpy as np
 
 from .utils_xarray import quantile
-from utils_python.math import quantile as quantile2
 
 
 def weighted_quantile(values, weights, quantiles):
@@ -117,6 +116,7 @@ def perfect_model_test(data, weights_sigmas, perc_lower, perc_upper):
       'true' models lying within their weighted percentiles to the total number
       of models.
     """
+    data = np.array(data)
     tmp = weighted_quantile(data, weights_sigmas, (perc_lower, perc_upper))
     assert np.all(tmp[..., 0] <= tmp[..., 1])
     # errmsg = 'Lower and upper percentile equivalent! Too strong weighting?'
