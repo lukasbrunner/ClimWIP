@@ -488,3 +488,42 @@ def quantile(data, quantiles, weights=None, interpolation='linear',
             'interpolation has to be one of [linear | lower | higher |',
             'nearest | midpoint] and not {}'.format(interpolation)])
         raise ValueError(errmsg)
+
+
+def variance(data, weights=None, biased=False):
+    """Calculates the (biased/unbiased) weighted variance.
+
+    Parameters:
+    - data (np.array): Array of data (N,)
+    - weights=None (np.array, optional): Array of weights (N,)
+    - biased=False (bool, optional): Calculate the biased or unbiased value.
+
+    Returns:
+    float (see also Note)
+
+    Note (masked input/output behavior):
+    The behavior of variance is equivalent to np.ma.var: if the result is not
+    masked (i.e., if NOT all input values are masked) it will return a simple
+    float. If all input values are masked it will return a
+    numpy.ma.core.MaskedConstant"""
+    was_masked = isinstance(data, np.ma.core.MaskedArray)
+    data = np.ma.masked_invalid(data)
+
+    if weights is None:
+        weights = np.ones_like(data)
+    weights = np.ma.array(weights, mask=data.mask)
+
+    av = np.ma.average(data, weights=weights)
+    if biased:
+        var = np.ma.average(np.ma.subtract(data, av)**2, weights=weights)
+    else:
+        v1, v2 = np.ma.sum(weights), np.ma.sum(weights**2)
+        var = np.ma.divide(
+            np.ma.sum(np.ma.multiply(weights, np.subtract(data, av)**2)),
+            (v1 - (v2/v1)))
+
+    if isinstance(var, float):  # if result is not masked
+        return var
+    elif was_masked:
+        return var  # if invalid & input was masked return masked
+    return np.nan  # else return nan
