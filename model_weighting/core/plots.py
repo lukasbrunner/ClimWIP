@@ -46,7 +46,7 @@ GeoAxes._pcolormesh_patched = Axes.pcolormesh
 logger = logging.getLogger(__name__)
 
 
-def plot_rmse(da, idx, cfg, what, min_, max_):
+def plot_rmse(da, idx, cfg, what, min_=None, max_=None):
     """Matrix plot of RMSEs for a given diagnostic.
 
     Parameters
@@ -58,12 +58,25 @@ def plot_rmse(da, idx, cfg, what, min_, max_):
     cfg : object
         Config object
     """
-    data = da.data
-    xx = da['model_ensemble'].data
+    path = os.path.join(cfg.plot_path, cfg.config)
+    os.makedirs(path, exist_ok=True)
+
     if what == 'performance':
-        yy = ['Observations']
-        data = data.reshape(1, -1)
+        fig, ax = plt.subplots(figsize=(5, 20))
+        ax.set_ylabel('Model')
+        data = da.data.reshape(-1, 1)
+        xx = ['Observations']
+        yy = da['model_ensemble'].data
+
     elif what == 'independence':
+        fig, ax = plt.subplots(figsize=(20, 20))
+        fig.subplots_adjust(right=.97, bottom=.02, left=.15, top=.85)
+        ax.set_xlabel('"Perfect" Model')
+        ax.set_ylabel('Model')
+        data = da.data
+        # data = np.tril(da.data)
+        # data[data == 0] = np.nan
+        xx = da['model_ensemble'].data
         yy = xx
 
     p25, p75 = np.nanpercentile(data, (10, 90))
@@ -81,9 +94,10 @@ def plot_rmse(da, idx, cfg, what, min_, max_):
         title = 'Mean RMSE all diagnostics; 50% range ({:.2f}-{:.2f})'.format(p25, p75)
         filename = 'rmse_{}_mean'.format(what)
 
-    path = os.path.join(cfg.plot_path, cfg.config)
-    os.makedirs(path, exist_ok=True)
-    fig, ax = plt.subplots(figsize=(20, 20))
+    if max_ is None:
+        max_ = np.nanpercentile(data, 95)
+    if min_ is None:
+        min_ = np.nanpercentile(data, 5)
 
     im = ax.matshow(data, vmin=min_, vmax=max_)
 
@@ -219,7 +233,7 @@ def plot_maps(ds, idx, cfg):
         logger.debug('Saved plot: {}.png'.format(filename))
 
 
-def plot_weights(ds, cfg, nn, dd, sort_by='name'):
+def plot_weights(ds, cfg, sort_by='name'):
     """Lineplot of weights per model.
 
     Parameters
@@ -246,40 +260,50 @@ def plot_weights(ds, cfg, nn, dd, sort_by='name'):
     fig.subplots_adjust(bottom=.2, top=.95)
 
     xx = np.arange(ds.dims['model_ensemble'])
-    dd = 1/dd
+    dd = 1/ds['weights_i'].data
+    nn = ds['weights_q'].data
+    ww = nn*dd
+    if 'nr_variants' in ds:
+        nr = ds['nr_variants'].data
+    else:
+        nr = None
 
     if sort_by == 'name':
         sorter = np.arange(len(xx))  # no additional sorting
-        lw_w = 1
+        lw_w = 2
         lw_p = .5
         lw_i = .5
     elif sort_by == 'weight':
-        sorter = np.argsort(ds['weights'].data)[::-1]
-        lw_w = 1
+        sorter = np.argsort(ww)[::-1]
+        lw_w = 2
         lw_p = .5
         lw_i = .5
     elif sort_by == 'performance':
         sorter = np.argsort(nn)[::-1]
         lw_w = .5
-        lw_p = 1
+        lw_p = 2
         lw_i = .5
     elif sort_by == 'independence':
         sorter = np.argsort(dd)[::-1]
         lw_w = .5
         lw_p = .5
-        lw_i = 1
+        lw_i = 2
 
-    yy1 = ((nn*dd) / np.sum(nn*dd))[sorter]
+    yy1 = (ww/ww.sum())[sorter]
     yy2 = (nn/nn.sum())[sorter]
     yy3 = (dd/dd.sum())[sorter]
 
-    ax.plot(xx, yy1, lw=lw_w, color='k', label='Weights', marker='o')
-    ax.plot(xx, yy2, lw=lw_p, color='blue', label='Performance', marker='^')
-    ax.plot(xx, yy3, lw=lw_i, color='green', label='Independence', marker='v')
+    ax.plot(xx, yy1, lw=lw_w, color='k', label='Weights without number weight', marker='o')
+    ax.plot(xx, yy2, lw=lw_p, color='blue', label='Performance weight', marker='^')
+    ax.plot(xx, yy3, lw=lw_i, color='green', label='Independence weight', marker='v')
     ax.axhline(1/len(xx), color='k', ls='--', label='Equal weight')
 
+    if nr is not None:
+        yy4 = ((1/nr)/(1/nr).sum())[sorter]
+        ax.plot(xx, yy4, lw=.5, color='orange', label='Number weight', marker='v')
+
     model_ensemble = ds['model_ensemble'].data
-    if sort_by in ['weight', 'performance', 'indepdendence']:
+    if sort_by in ['weight', 'performance', 'independence']:
         ax.set_xticks(xx)
         ax.set_xticklabels(model_ensemble[sorter])
     else:  # plot xlabel only for first ensemble member
