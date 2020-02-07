@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2020-01-30 08:44:36 lukbrunn>
+Time-stamp: <2020-02-02 18:13:25 lukas>
 
 (c) 2019 under a MIT License (https://mit-license.org)
 
@@ -234,7 +234,7 @@ def plot(ds_models, ds_obs, weights, args, ds):
     plot_box(ds_models, 2105)
     plot_box(ds_models, 2110, weights=weights.data, color='darkred')
 
-    mean = ds_obs.sel(year=slice('2080', '2099')).mean('year')
+    mean = ds_obs.sel(year=slice('2080', '2099')).mean(('year', 'dataset'))
     if not np.isnan(mean):
         ax.plot(
             [2103, 2112], [mean, mean],
