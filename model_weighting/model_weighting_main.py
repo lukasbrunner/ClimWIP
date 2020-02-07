@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Copyright 2019 Lukas Brunner, ETH Zurich
+Copyright 2020 Lukas Brunner, ETH Zurich
 
 This file is part of ClimWIP.
 
@@ -52,11 +52,18 @@ import argparse
 import warnings
 import numpy as np
 import xarray as xr
+from natsort import natsorted
 
-from core.get_filenames import get_filenames
+from core.get_filenames import get_filenames, select_variants
 from core.diagnostics import calculate_diagnostic
 from core.perfect_model_test import perfect_model_test
 from core.read_config import read_config
+from core.process_variants import (
+    process_variants,
+    process_variants_target,
+    independence_sigma_from_variants,
+    expand_variants,
+)
 from core.weights import (
     calculate_weights_sigmas,
     calculate_weights,
@@ -135,7 +142,7 @@ def calc_target(filenames, cfg):
     os.makedirs(base_path, exist_ok=True)
 
     targets = []
-    clim = []
+    clims = []
     for model_ensemble, filename in filenames.items():
         with utils.LogTime(model_ensemble, level='debug'):
             target = calculate_diagnostic(
@@ -176,13 +183,14 @@ def calc_target(filenames, cfg):
                 target[cfg.target_diagnostic] -= target_hist[cfg.target_diagnostic]
                 target_hist['model_ensemble'] = xr.DataArray([model_ensemble], dims='model_ensemble')
 
-                clim.append(target_hist)
+                clims.append(target_hist)
 
         target['model_ensemble'] = xr.DataArray([model_ensemble], dims='model_ensemble')
         targets.append(target)
         logger.debug('Calculate diagnostics for file {}... DONE'.format(filename))
+
     return (xr.concat(targets, dim='model_ensemble')[cfg.target_diagnostic],
-            xr.concat(clim, dim='model_ensemble')[cfg.target_diagnostic]
+            xr.concat(clims, dim='model_ensemble')[cfg.target_diagnostic]
             if cfg.target_startyear_ref is not None else None)
 
 
@@ -307,6 +315,7 @@ def calc_performance(filenames, cfg):
         # ---------------------------------------
 
         diff = np.sqrt(area_weighted_mean(diff**2))
+
         if cfg.performance_aggs[idx] == 'CYC':
             diff = diff.mean('month')
 
@@ -315,6 +324,7 @@ def calc_performance(filenames, cfg):
 
         diffs.append(diff)
         logger.info(f'Calculate performance diagnostic {diagn_key}{cfg.performance_aggs[idx]}... DONE')
+
     return xr.concat(diffs, dim='diagnostic')
 
 
@@ -429,11 +439,6 @@ def _normalize(data, normalize_by):
     return data / normalizer
 
 
-def _mean(data, weights=None):
-    """Weighted average of diagnostics."""
-    return np.average(data, weights=weights)
-
-
 def calc_deltas(performance_diagnostics, independence_diagnostics, cfg):
     """
     Normalize and average diagnostics for performance and independence.
@@ -460,27 +465,21 @@ def calc_deltas(performance_diagnostics, independence_diagnostics, cfg):
     independence_diagnostics = xr.apply_ufunc(
         _normalize, independence_diagnostics, normalize_by,
         input_core_dims=[['model_ensemble', 'perfect_model_ensemble'], ['temp']],
-        output_core_dims=[['model_ensemble', 'perfect_model_ensemble']],
+        # NOTE: we want the perfect model dimension to be the first one for subsequent uses!
+        output_core_dims=[['perfect_model_ensemble', 'model_ensemble']],
         vectorize=True)
-    if len(independence_diagnostics['diagnostic']) > 1:
-        independence_diagnostics_mean = xr.apply_ufunc(
-            _mean, independence_diagnostics,
-            input_core_dims=[['diagnostic']],
-            vectorize=True,
-            kwargs={'weights': cfg.independence_weights})
-    else:
-        independence_diagnostics_mean = independence_diagnostics.squeeze()
-    independence_diagnostics_mean.name = 'delta_i'
+    delta_i, sigma_i, independence_diagnostics = process_variants(independence_diagnostics, cfg)
+    delta_i.name = 'delta_i'
 
     if cfg.plot:
         max_ = np.max([np.nanpercentile(dd, 95) for dd in independence_diagnostics])
         min_ = np.min([np.nanpercentile(dd, 5) for dd in independence_diagnostics])
-        plot_rmse(independence_diagnostics_mean, 'mean', cfg, 'independence', min_, max_)
+        plot_rmse(delta_i, 'mean', cfg, 'independence')
         for idx, diag in enumerate(independence_diagnostics):
             plot_rmse(diag, idx, cfg, 'independence', min_, max_)
 
     if performance_diagnostics is None:  # model-model distances only
-        return None, independence_diagnostics_mean
+        return None, delta_i, None
 
     normalize_by = xr.DataArray([cfg.performance_normalizers], dims=('temp', 'diagnostic'),
                                 coords={'diagnostic': performance_diagnostics['diagnostic']})
@@ -489,27 +488,20 @@ def calc_deltas(performance_diagnostics, independence_diagnostics, cfg):
         input_core_dims=[['model_ensemble'], ['temp']],
         output_core_dims=[['model_ensemble']],
         vectorize=True)
-    if len(performance_diagnostics['diagnostic']) > 1:
-        performance_diagnostics_mean = xr.apply_ufunc(
-            _mean, performance_diagnostics,
-            input_core_dims=[['diagnostic']],
-            vectorize=True,
-            kwargs={'weights': cfg.performance_weights})
-    else:
-        performance_diagnostics_mean = performance_diagnostics.squeeze()
-    performance_diagnostics_mean.name = 'delta_q'
+    delta_q, _, performance_diagnostics = process_variants(performance_diagnostics, cfg)
+    delta_q.name = 'delta_q'
 
     if cfg.plot:
         max_ = np.max([np.percentile(dd, 95) for dd in performance_diagnostics])
         min_ = np.min([np.percentile(dd, 5) for dd in performance_diagnostics])
-        plot_rmse(performance_diagnostics_mean, 'mean', cfg, 'performance', min_, max_)
+        plot_rmse(delta_q, 'mean', cfg, 'performance')
         for idx, diag in enumerate(performance_diagnostics):
             plot_rmse(diag, idx, cfg, 'performance', min_, max_)
 
-    return performance_diagnostics_mean, independence_diagnostics_mean
+    return delta_q, delta_i, sigma_i
 
 
-def calc_sigmas(targets, delta_i, unique_models, cfg, n_sigmas=50):
+def calc_sigmas(targets, delta_i, sigma_i_variants, cfg, n_sigmas=50):
     """
     Perform a perfect model test to estimate the optimal shape parameters.
 
@@ -550,30 +542,42 @@ def calc_sigmas(targets, delta_i, unique_models, cfg, n_sigmas=50):
         sigmas_q = np.linspace(.2*sigma_base, 2*sigma_base, n_sigmas)
     # a large value means all models depend on each other, a small value means all models
     # are independent -> we want this ~delta_i
-    if isinstance(cfg.sigma_i, (int, float)):  # convention: equal weighting
+    if isinstance(cfg.sigma_i, (int, float)):
         sigmas_i = np.array([cfg.sigma_i])
+    elif sigma_i_variants is not None:
+        sigmas_i = sigma_i_variants
     else:
         sigmas_i = np.linspace(.2*sigma_base, 2*sigma_base, n_sigmas)
 
-    # for the perfect model test we only use one member per model!
-    targets_1ens = targets.sel(model_ensemble=unique_models)
-    delta_i_1ens = delta_i.sel(model_ensemble=unique_models,
-                               perfect_model_ensemble=unique_models).data
-    targets_1ens_mean = area_weighted_mean(targets_1ens, latn='lat', lonn='lon').data
+    targets_mean = area_weighted_mean(targets)
+    targets_mean = process_variants_target(targets_mean, cfg)
+
+    if cfg.variants_combine:
+        # in this case they only include one variant per model already
+        targets_mean_1ens = targets_mean
+        delta_i_1ens = delta_i
+    else:
+        # NOTE: if we take the mean first it does not matter how we sort them, but if
+        # we don't it does! Particularly 'random' might lead to different results
+        # every time.
+        _, models_1ens = select_variants(targets['model_ensemble'].data, 1, 'natsorted')
+
+        # for the perfect model test we only use one member per model!
+        targets_mean_1ens = targets_mean.sel(model_ensemble=models_1ens).data
+        delta_i_1ens = delta_i.sel(model_ensemble=models_1ens,
+                                   perfect_model_ensemble=models_1ens).data
 
     # use the initial-condition members to estimate sigma_i
-    if cfg.variants_independence:
+    if cfg.variants_independence and cfg.variants_combine is None:
+        # old way if variants are not combined
         sigmas_i = independence_sigma(delta_i, sigmas_i)
-        idx_i_min = 0
-    else:
-        idx_i_min = None
 
     weights_sigmas = calculate_weights_sigmas(delta_i_1ens, sigmas_q, sigmas_i)
 
     # ratio of perfect models inside their respective weighted percentiles
     # for each sigma combination
     inside_ratio = perfect_model_test(
-        targets_1ens_mean, weights_sigmas,
+        targets_mean_1ens, weights_sigmas,
         perc_lower=cfg.percentiles[0],
         perc_upper=cfg.percentiles[1])
 
@@ -586,28 +590,25 @@ def calc_sigmas(targets, delta_i, unique_models, cfg, n_sigmas=50):
         logmsg = f'Perfect model test failed ({inside_ratio.max():.4f} < {cfg.inside_ratio:.4f})!'
         if force_inside_ratio:
             # adjust inside_ratio to force a result (probably not recommended?)
-            inside_ok = inside_ratio >= np.max(inside_ratio[:, idx_i_min])
+            inside_ok = inside_ratio >= np.max(inside_ratio)
             logmsg += ' force=True: Setting inside_ratio to max: {}'.format(
-                np.max(inside_ratio[:, idx_i_min]))
+                np.max(inside_ratio))
             logger.warning(logmsg)
         else:
             raise ValueError(logmsg)
 
-    if cfg.variants_independence:
-        idx_q_min = np.argmin(1-inside_ok[:, idx_i_min])
-    else:
-        # find the element with the smallest sum i+j which is True
-        index_sum = 9999
-        idx_q_min = None
-        for idx_q, qq in enumerate(inside_ok):
-            if qq.sum() == 0:
-                continue  # no fitting element
-            elif idx_q >= index_sum:
-                break  # no further optimization possible
-            idx_i = np.where(qq)[0][0]
-            if idx_i + idx_q < index_sum:
-                index_sum = idx_i + idx_q
-                idx_i_min, idx_q_min = idx_i, idx_q
+    # find the element with the smallest sum i+j which is True
+    index_sum = 9999
+    idx_q_min = None
+    for idx_q, qq in enumerate(inside_ok):
+        if qq.sum() == 0:
+            continue  # no fitting element
+        elif idx_q >= index_sum:
+            break  # no further optimization possible
+        idx_i = np.where(qq)[0][0]
+        if idx_i + idx_q < index_sum:
+            index_sum = idx_i + idx_q
+            idx_i_min, idx_q_min = idx_i, idx_q
 
     logger.info('sigma_q: {:.4f}; sigma_i: {:.4f}'.format(
         sigmas_q[idx_q_min], sigmas_i[idx_i_min]))
@@ -643,9 +644,12 @@ def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg):
 
     Returns
     -------
-    weights : xarray.Dataset, same shape as delta_q
-        An array of weights
+    weights : xarray.Dataset
+        A Dataset containing several DataArrays.
     """
+    # make sure the perfect model dimension is still the first one!
+    delta_i = delta_i.transpose('perfect_model_ensemble', 'model_ensemble')
+
     if cfg.obs_id is not None:
         numerator, denominator = calculate_weights(delta_q, delta_i, sigma_q, sigma_i)
         weights = numerator/denominator
@@ -658,8 +662,9 @@ def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg):
         delta_q = delta_i
         delta_q.name = 'delta_q'
         calculate_weights_matrix = np.vectorize(
-            calculate_weights, signature='(n)->(n),(n)', excluded=[1, 2, 3])
-        numerator, denominator = calculate_weights_matrix(delta_q, delta_i, sigma_q, sigma_i)
+            calculate_weights, signature='(n)->(n),(n)', excluded=[1, 2, 3, 4])
+        numerator, denominator = calculate_weights_matrix(
+            delta_q, delta_i, sigma_q, sigma_i)
         weights = numerator/denominator
         weights /= np.nansum(weights, axis=-1)
         dims = ('perfect_model_ensemble', 'model_ensemble')
@@ -721,14 +726,11 @@ def calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg):
         'long_name': 'Model Distance Shape Parameter',
     }
 
-    ds.attrs['target'] = cfg.target_diagnostic
-    ds.attrs['region'] = cfg.target_region
-
     if cfg.plot and cfg.obs_id:
-        plot_weights(ds, cfg, numerator, denominator)
-        plot_weights(ds, cfg, numerator, denominator, sort_by='weight')
-        plot_weights(ds, cfg, numerator, denominator, sort_by='performance')
-        plot_weights(ds, cfg, numerator, denominator, sort_by='independence')
+        plot_weights(ds, cfg)
+        plot_weights(ds, cfg, sort_by='weight')
+        plot_weights(ds, cfg, sort_by='performance')
+        plot_weights(ds, cfg, sort_by='independence')
 
     return ds
 
@@ -751,8 +753,15 @@ def save_data(ds, targets, clim, filenames, cfg):
     -------
     None
     """
-    # save additional variables for convenience
     if targets is not None:
+        targets = targets.sel(model_ensemble=natsorted(targets['model_ensemble'].data))
+        if cfg.variants_combine:  # targets still has all variants!
+            ds = expand_variants(ds, targets['model_ensemble'].data)
+            targets_mean = process_variants_target(targets, cfg)
+            targets_mean = targets_mean.rename({'model_ensemble': 'model'})
+            ds[f'{cfg.target_diagnostic}_mean'] = targets_mean
+
+        # save additional variables for convenience
         ds[cfg.target_diagnostic] = targets
         ds['filename'] = xr.DataArray(
             [*filenames[cfg.target_diagnostic].values()],
@@ -762,7 +771,15 @@ def save_data(ds, targets, clim, filenames, cfg):
                 'units': '1',
                 'long_name': 'Full Path and Filename',
             })
+
+        ds.attrs['target'] = cfg.target_diagnostic
+        ds.attrs['region'] = cfg.target_region
+
     if clim is not None:
+        clim = clim.sel(model_ensemble=natsorted(clim['model_ensemble'].data))
+        if cfg.variants_combine:
+            clim_mean = process_variants_target(clim, cfg)
+            ds[f'{cfg.target_diagnostic}_clim_mean'] = clim_mean
         ds[f'{cfg.target_diagnostic}_clim'] = clim
 
     # add some metadata
@@ -790,7 +807,7 @@ def main(args):
     cfg = read_config(args.config, args.filename)
 
     log.start('main().set_up_filenames(**kwargs)')
-    filenames, unique_models = get_filenames(cfg)
+    filenames = get_filenames(cfg)
 
     log.start('main().calc_predictors(**kwargs)')
     if cfg.performance_diagnostics is None or cfg.obs_id is None:
@@ -800,7 +817,7 @@ def main(args):
     independence_diagnostics = calc_independence(filenames, cfg)
 
     log.start('main().calc_deltas(**kwargs)')
-    delta_q, delta_i = calc_deltas(performance_diagnostics, independence_diagnostics, cfg)
+    delta_q, delta_i, sigma_i_variants = calc_deltas(performance_diagnostics, independence_diagnostics, cfg)
 
     if cfg.target_diagnostic is None:
         logger.info('Using user sigmas: q={}, i={}'.format(cfg.sigma_q, cfg.sigma_i))
@@ -812,7 +829,7 @@ def main(args):
         log.start('main().calc_target(**kwargs)')
         targets, clim = calc_target(filenames[cfg.target_diagnostic], cfg)
         log.start('main().calc_sigmas(**kwargs)')
-        sigma_q, sigma_i = calc_sigmas(targets, delta_i, unique_models, cfg)
+        sigma_q, sigma_i = calc_sigmas(targets, delta_i, sigma_i_variants, cfg)
 
     log.start('main().calc_weights(**kwargs)')
     weights = calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg)
