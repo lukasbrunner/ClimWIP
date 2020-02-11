@@ -276,3 +276,38 @@ class LogTime:
             return logger.warning
         elif level.lower() == 'error':
             return logger.error
+
+
+def get_git_info():
+    """
+    Get information about the Git repository.
+
+    Returns
+    -------
+    git_info : string
+        Information about the git repository:
+        time_stamp git@url:git_rep.git: branch_name ##
+
+    Information
+    -----------
+    time_stamp :  The current time
+    git@url:git_rep.git : Origin of the git repository
+        git config --get remote.origin.url
+    branch_name : currently checked out branch
+        git rev-parse --abbrev-ref HEAD
+    ## : revision hash or revision tag
+        git describe --always
+    """
+    status = str(subprocess.check_output(['/usr/bin/git', 'status'])).split('\\n')[-2]
+    if not (status == 'nothing to commit, working tree clean' or
+            status == 'nothing added to commit but untracked files present (use "git add" to track)'):
+        return 'Git status not clean! Omitting hash extraction.'
+
+    time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    revision = subprocess.check_output([
+        '/usr/bin/git', 'describe', '--always']).strip().decode()
+    rep_name = subprocess.check_output([
+        '/usr/bin/git', 'config', '--get', 'remote.origin.url']).strip().decode()
+    branch_name = subprocess.check_output([
+        '/usr/bin/git', 'rev-parse', '--abbrev-ref', 'HEAD']).strip().decode()
+    return f'{time} {rep_name}: {branch_name} {revision}'
