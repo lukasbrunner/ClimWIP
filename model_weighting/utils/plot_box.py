@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2020-01-30 08:44:57 lukbrunn>
+Time-stamp: <2020-02-07 16:38:20 lukbrunn>
 
 (c) 2019 under a MIT License (https://mit-license.org)
 
@@ -24,6 +24,7 @@ from boxplot import boxplot
 
 SAVEPATH = os.path.dirname(os.path.abspath(__file__)) + '/../../plots/boxplots'
 os.makedirs(SAVEPATH, exist_ok=True)
+
 
 def read_input():
     """Read the given configuration from the config file"""
