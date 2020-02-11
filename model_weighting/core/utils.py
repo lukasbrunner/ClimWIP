@@ -304,7 +304,7 @@ def get_git_info():
             status == 'nothing added to commit but untracked files present (use "git add" to track)'):
         return 'Git status not clean! Omitting hash extraction.'
 
-    time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     revision = subprocess.check_output([
         '/usr/bin/git', 'describe', '--always']).strip().decode()
     rep_name = subprocess.check_output([
