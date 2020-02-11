@@ -352,12 +352,20 @@ def process_variants(da, cfg):
 
     model_ensemble = natsorted(diagnostic['model_ensemble'].data)
     diagnostic = diagnostic.sel(model_ensemble=model_ensemble)
+    da_mean = da_mean.sel(model_ensemble=model_ensemble)
     if inter_model:
         # make sure they are sorted the same way
         diagnostic = diagnostic.sel(perfect_model_ensemble=model_ensemble)
+        da_mean = da_mean.sel(perfect_model_ensemble=model_ensemble)
         # set the diagonal elements to nan again (have been overwritten by mean)
         diagnostic = xr.apply_ufunc(
             _set_diagonal, diagnostic,
+            input_core_dims=[['model_ensemble', 'perfect_model_ensemble']],
+            output_core_dims=[['model_ensemble', 'perfect_model_ensemble']],
+            vectorize=True)
+
+        da_mean = xr.apply_ufunc(
+            _set_diagonal, da_mean,
             input_core_dims=[['model_ensemble', 'perfect_model_ensemble']],
             output_core_dims=[['model_ensemble', 'perfect_model_ensemble']],
             vectorize=True)
