@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2020-01-29 11:24:07 lukbrunn>
+Time-stamp: <2020-02-07 16:43:22 lukbrunn>
 
 (c) 2019 under a MIT License (https://mit-license.org)
 
@@ -39,7 +39,8 @@ def read_input():
         dest='filenames', nargs='+', type=str,
         help='')
     parser.add_argument(
-        '--path', '-p', dest='path', type=str, default='',
+        '--path', '-p', dest='path', type=str,
+        default='/net/h2o/climphys/lukbrunn/Data/ModelWeighting/CMIP6',
         help='')
     parser.add_argument(
         '--title', '-t', dest='title', type=str, default=None,
@@ -141,6 +142,7 @@ def crps_xarray(ds, varn, exclude_ensembles='all'):
 
 
 def read_data(filename, path):
+    filename += '.nc' if not filename.endswith('.nc') else ''
     ds = xr.open_dataset(os.path.join(path, filename))
     ds = area_weighted_mean(ds)
     return ds
@@ -162,6 +164,11 @@ def main():
 
         ds = read_data(ff, args.path)
         varn = ds.attrs['target']
+
+        if 'weights_mean' in ds:
+            ds = ds.drop_dims(('model_ensemble', 'perfect_model_ensemble'))
+            ds = ds.rename({'model': 'model_ensemble', 'perfect_model': 'perfect_model_ensemble',
+                            f'{varn}_mean': varn, 'weights_mean': 'weights'})
 
         skill = crps_xarray(ds, varn, args.exclude_ensembles[xx])
 

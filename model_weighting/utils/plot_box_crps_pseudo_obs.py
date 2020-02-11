@@ -39,7 +39,7 @@ def read_input():
         type=lambda x: x.split(', '),
         help='')
     parser.add_argument(
-        '--path', '-p', dest='path', type=str, default='',
+        '--path', '-p', dest='path', type=str, default='/net/h2o/climphys/lukbrunn/Data/ModelWeighting/CMIP6',
         help='')
     parser.add_argument(
         '--title', '-t', dest='title', type=str, default=None,
@@ -114,7 +114,7 @@ def read_obs(ds, cfg):
 
         filename = os.path.join(obs_path, '{}_mon_{}_g025.nc'.format(cfg.target_diagnostic, obs_id))
         ds_var = xr.open_dataset(filename, use_cftime=True)[cfg.target_diagnostic].load()
-        if '_CMIP6' in obs_id:
+        if 'CMIP6' in obs_id:
             try:
                 filename = os.path.join(obs_path, '{}_mon_{}_g025_future.nc'.format(
                     cfg.target_diagnostic, obs_id))
@@ -190,6 +190,7 @@ def main():
             ax, xx,
             mean=mean,
             median=median,
+            dots=skill.data,
             box=(p25, p75),
             whis=(p05, p95),
             width=.8,
