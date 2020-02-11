@@ -298,8 +298,7 @@ def process_obs_parameters(cfg):
 
     if cfg.obs_path is None:
         for param in obs_parameters.keys():
-            if cfg[param] is not None:
-                raise ValueError
+            cfg[param] = None
         return  # all parameters contain a single None
 
     param = 'obs_path'
