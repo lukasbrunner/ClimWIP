@@ -791,6 +791,7 @@ def save_data(ds, targets, clim, filenames, cfg):
             'climate projections using combined performance-independence',
             'weighting. Eniron. Res. Lett.',
             'https://doi.org/10.1088/1748-9326/ab492f.']),
+        'git_hash': utils.get_git_info(),
     })
     add_revision(ds)
 
