@@ -35,6 +35,7 @@ import __main__ as main
 from datetime import datetime
 from configparser import ConfigParser
 from munch import munchify
+import subprocess
 
 logger = logging.getLogger(__name__)
 format_ = '%(asctime)s - %(levelname)s - %(funcName)s() %(lineno)s: %(message)s'
