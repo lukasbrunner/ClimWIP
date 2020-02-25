@@ -252,7 +252,7 @@ def calculate_basic_diagnostic(infile, varn,
         scenario = infile.split('_')[-3]
         da = xr.open_dataset(infile, use_cftime=True)[varn]
         if scenario != 'historical':
-            assert re.compile('[rcps]{3}[1-9]{3}$').match(scenario), 'not a scenario!'
+            assert re.compile('[rcps]{3}[0-9]{3}$').match(scenario), 'not a scenario!'
             histfile = infile.replace(scenario, 'historical')
             da_hist = xr.open_dataset(histfile, use_cftime=True)[varn]
             da = xr.concat([da_hist, da], dim='time')
@@ -271,6 +271,13 @@ def calculate_basic_diagnostic(infile, varn,
 
     if time_period is not None:
         da = da.sel(time=slice(str(time_period[0]), str(time_period[1])))
+
+    # NOTE: CAMS-CSM1-0 is missing the last year!
+    if time_period[1] == '2100' and 'CAMS-CSM1-0' in infile:
+        da = da.sel(time=slice(None, '2099'))
+
+    if id_ in ['CMIP6', 'CMIP5', 'CMIP3', 'LE'] and np.any(np.isnan(da.data)):
+        raise ValueError('Missing value in model detected!')
 
     if season in ['JJA', 'SON', 'DJF', 'MAM']:
         da = da.isel(time=da['time.season'] == season)
