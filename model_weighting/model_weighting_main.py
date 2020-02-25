@@ -498,6 +498,9 @@ def calc_deltas(performance_diagnostics, independence_diagnostics, cfg):
         for idx, diag in enumerate(performance_diagnostics):
             plot_rmse(diag, idx, cfg, 'performance', min_, max_)
 
+    if cfg.variants_independence:
+        logger.info('sigma_i estimated from ensemble variants: {:.4f}'.format(sigma_i[0]))
+
     return delta_q, delta_i, sigma_i
 
 
@@ -548,6 +551,10 @@ def calc_sigmas(targets, delta_i, sigma_i_variants, cfg, n_sigmas=50):
         sigmas_i = sigma_i_variants
     else:
         sigmas_i = np.linspace(.2*sigma_base, 2*sigma_base, n_sigmas)
+
+    if len(sigmas_q) == 1 and len(sigmas_i) == 1:
+        logger.info('Using sigmas: q={}, i={}'.format(sigmas_q[0], sigmas_i[0]))
+        return sigmas_q[0], sigmas_i[0]
 
     targets_mean = area_weighted_mean(targets)
     targets_mean = process_variants_target(targets_mean, cfg)
