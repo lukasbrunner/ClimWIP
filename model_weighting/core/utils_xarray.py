@@ -146,10 +146,6 @@ def area_weighted_mean(
         else:
             continue
 
-        if '_FillValue' in ds[varn].encoding.keys():
-            fill_value = ds[varn].encoding['_FillValue']
-            if fill_value != np.nan:
-                mean = np.where(np.isnan(mean), fill_value, mean)
         ds_mean[varn].data = mean
 
     warnings.resetwarnings()

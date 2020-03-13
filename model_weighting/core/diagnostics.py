@@ -273,10 +273,11 @@ def calculate_basic_diagnostic(infile, varn,
         da = da.sel(time=slice(str(time_period[0]), str(time_period[1])))
 
     # NOTE: CAMS-CSM1-0 is missing the last year!
-    if time_period[1] == '2100' and 'CAMS-CSM1-0' in infile:
+    if str(time_period[1]) == '2100' and 'CAMS-CSM1-0' in infile:
         da = da.sel(time=slice(None, '2099'))
 
     if id_ in ['CMIP6', 'CMIP5', 'CMIP3', 'LE'] and np.any(np.isnan(da.data)):
+        import ipdb; ipdb.set_trace()
         raise ValueError('Missing value in model detected!')
 
     if season in ['JJA', 'SON', 'DJF', 'MAM']:
