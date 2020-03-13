@@ -98,7 +98,7 @@ def read_config(cname='DEFAULT', path='config.ini', separator=','):
     to their logical equivalents.  Strings containing the 'separator' string
     will be converted to list."""
 
-    def _convert(str_):
+    def _convert(str_, key):
         str_ = str_.strip()
         try:
             return int(str_)
@@ -113,7 +113,7 @@ def read_config(cname='DEFAULT', path='config.ini', separator=','):
                 elif str_ == 'None':
                     return None
                 elif len(str_) == 0:  # NOTE: ignore empty strings in list
-                    raise ValueError
+                    raise ValueError('Exception in parameter {}'.format(key))
                 else:  # use '123' to force a string
                     return str(str_.replace("'", "").replace('"', ''))
 
@@ -133,11 +133,11 @@ def read_config(cname='DEFAULT', path='config.ini', separator=','):
             cc[key] = cc[key].split(separator)
             for idx, _ in enumerate(cc[key]):
                 try:
-                    cc[key][idx] = _convert(cc[key][idx])
+                    cc[key][idx] = _convert(cc[key][idx], key)
                 except ValueError:  # NOTE: ignore empty strings in list
                     del cc[key][idx]
         else:
-            cc[key] = _convert(cc[key])
+            cc[key] = _convert(cc[key], key)
 
     cc.config = cname  # also contain the name of the configuration
     cc.config_path = fullpath  # and path of the config file
