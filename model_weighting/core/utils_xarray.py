@@ -248,6 +248,12 @@ def weighted_distance_matrix(data, lat=None):
     return d_matrix
 
 
+def distance_matrix(data):
+    d_matrix = squareform(pdist(data.reshape(-1, 1), metric='euclidean'))
+    np.fill_diagonal(d_matrix, np.nan)
+    return d_matrix
+
+
 def distance_uncertainty(var, obs_min, obs_max):
     """Account for uncertainties in the observations by setting
     distances within the observational spread to zero"""
