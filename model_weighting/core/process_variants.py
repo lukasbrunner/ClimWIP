@@ -269,7 +269,7 @@ def process_variants(da, cfg):
                 input_core_dims=[['diagnostic'], ['diagnostic']],
                 vectorize=True)
         else:
-            delta_i = da
+            delta_i = da.squeeze()
         delta_i.name = 'delta_i'
 
         return delta_i, None, da
