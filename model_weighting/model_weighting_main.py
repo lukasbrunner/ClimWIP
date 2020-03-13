@@ -403,7 +403,7 @@ def calc_independence(filenames, cfg):
         diagnostics = xr.concat(diagnostics, dim='model_ensemble')
         logger.debug('Calculate model independence matrix...')
 
-        if cfg.performance_aggs[idx] in ['CLIM-MEAN', 'TREND-MEAN']:
+        if cfg.independence_aggs[idx] in ['CLIM-MEAN', 'TREND-MEAN']:
             diff = xr.apply_ufunc(
                 distance_matrix, area_weighted_mean(diagnostics[diagn_key]),
                 input_core_dims=[['model_ensemble']],
