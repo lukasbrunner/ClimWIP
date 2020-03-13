@@ -386,7 +386,7 @@ def calculate_basic_diagnostic(infile, varn,
                                 vectorize=True,
                                 keep_attrs=True)
             da = da.std('year', skipna=False)
-        elif time_aggregation == 'TREND':
+        elif time_aggregation in ['TREND', 'TREND-MEAN']:
             # trend of seasonal (annual) means
             da = da.groupby('time.year').mean('time', skipna=False)
             da = xr.apply_ufunc(trend, da,
