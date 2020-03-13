@@ -74,6 +74,7 @@ from core.utils_xarray import (
     add_revision,
     area_weighted_mean,
     weighted_distance_matrix,
+    distance_matrix,
     distance_uncertainty
 )
 from core.plots import (
@@ -280,6 +281,14 @@ def calc_performance(filenames, cfg):
 
         obs = xr.concat(obs_list, dim='dataset_dim')
 
+        # NOTE: calculate differences based on global mean properties
+        if cfg.performance_aggs[idx] in ['CLIM-MEAN', 'TREND-MEAN']:
+            if cfg.obs_uncertainty == 'range':
+                raise NotImplementedError
+            diagnostics[diagn_key] = area_weighted_mean(diagnostics[diagn_key])
+            obs = area_weighted_mean(obs)
+        # ---
+
         if cfg.obs_uncertainty == 'range':
             with warnings.catch_warnings():
                 warnings.filterwarnings('ignore')
@@ -314,7 +323,10 @@ def calc_performance(filenames, cfg):
         #         plot_maps(diff, idx, cfg)
         # ---------------------------------------
 
-        diff = np.sqrt(area_weighted_mean(diff**2))
+        if cfg.performance_aggs[idx] in ['CLIM-MEAN', 'TREND-MEAN']:
+            diff = np.abs(diff)
+        else:
+            diff = np.sqrt(area_weighted_mean(diff**2))
 
         if cfg.performance_aggs[idx] == 'CYC':
             diff = diff.mean('month')
@@ -391,13 +403,20 @@ def calc_independence(filenames, cfg):
         diagnostics = xr.concat(diagnostics, dim='model_ensemble')
         logger.debug('Calculate model independence matrix...')
 
-        diff = xr.apply_ufunc(
-            weighted_distance_matrix, diagnostics[diagn_key],
-            input_core_dims=[['model_ensemble', 'lat', 'lon']],
-            output_core_dims=[['perfect_model_ensemble', 'model_ensemble']],
-            kwargs={'lat': diagnostics['lat'].data},  # NOTE: comment out for unweighted
-            vectorize=True,
-        )
+        if cfg.performance_aggs[idx] in ['CLIM-MEAN', 'TREND-MEAN']:
+            diff = xr.apply_ufunc(
+                distance_matrix, area_weighted_mean(diagnostics[diagn_key]),
+                input_core_dims=[['model_ensemble']],
+                output_core_dims=[['perfect_model_ensemble', 'model_ensemble']]
+            )
+        else:
+            diff = xr.apply_ufunc(
+                weighted_distance_matrix, diagnostics[diagn_key],
+                input_core_dims=[['model_ensemble', 'lat', 'lon']],
+                output_core_dims=[['perfect_model_ensemble', 'model_ensemble']],
+                kwargs={'lat': diagnostics['lat'].data},  # NOTE: comment out for unweighted
+                vectorize=True,
+            )
         # fill newly defined dimension
         diff['perfect_model_ensemble'] = diff['model_ensemble'].data
 
@@ -569,10 +588,14 @@ def calc_sigmas(targets, delta_i, sigma_i_variants, cfg, n_sigmas=50):
         # every time.
         _, models_1ens = select_variants(targets['model_ensemble'].data, 1, 'natsorted')
 
-        # for the perfect model test we only use one member per model!
-        targets_mean_1ens = targets_mean.sel(model_ensemble=models_1ens).data
-        delta_i_1ens = delta_i.sel(model_ensemble=models_1ens,
-                                   perfect_model_ensemble=models_1ens).data
+        if len(models_1ens) > 1:
+            # for the perfect model test we only use one member per model!
+            targets_mean_1ens = targets_mean.sel(model_ensemble=models_1ens).data
+            delta_i_1ens = delta_i.sel(model_ensemble=models_1ens,
+                                       perfect_model_ensemble=models_1ens).data
+        else:  # if we run this with only one SMILE use all variants
+            targets_mean_1ens = targets_mean
+            delta_i_1ens = delta_i
 
     # use the initial-condition members to estimate sigma_i
     if cfg.variants_independence and cfg.variants_combine is None:
