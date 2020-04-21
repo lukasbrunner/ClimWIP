@@ -514,7 +514,7 @@ def calc_deltas(performance_diagnostics, independence_diagnostics, cfg):
         max_ = np.max([np.percentile(dd, 95) for dd in performance_diagnostics])
         min_ = np.min([np.percentile(dd, 5) for dd in performance_diagnostics])
         plot_rmse(delta_q, 'mean', cfg, 'performance')
-        for idx, diag in enumerate(performance_diagnostics):
+        for idx, diag in enumerate(performance_diagnostics.transpose('diagnostic', 'model_ensemble')):
             plot_rmse(diag, idx, cfg, 'performance', min_, max_)
 
     if cfg.variants_independence:
@@ -598,7 +598,7 @@ def calc_sigmas(targets, delta_i, sigma_i_variants, cfg, n_sigmas=50):
             delta_i_1ens = delta_i
 
     # use the initial-condition members to estimate sigma_i
-    if cfg.variants_independence and cfg.variants_combine is None:
+    if cfg.variants_independence and not cfg.variants_combine:
         # old way if variants are not combined
         sigmas_i = independence_sigma(delta_i, sigmas_i)
 
