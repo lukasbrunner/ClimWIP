@@ -1,7 +1,7 @@
 ClimWIP
 =======
 
-A collection of functions to perform Climate model Weighting by Independence and Performance (ClimWIP).
+A collection of functions implementing the Climate model Weighting by Independence and Performance (ClimWIP) package.
 
 Content
 -------
@@ -19,9 +19,9 @@ Content
 
 Key Publications
 ---------------------
-Brunner, L. et al. (in preparation): A weighting scheme to constrain global temperature change from CMIP6 accounting for model independence and performance __Earth Syst. Dynam._
+Brunner, L. et al. (in preparation): A weighting scheme to constrain global temperature change from CMIP6 accounting for model independence and performance _Earth Syst. Dynam._
 
-Merriefield, A. L. et al. (2019): A weighting scheme to incorporate large ensembles in multi-model ensemble projections. _Earth Syst. Dynam. Diss._ DOI: <a href="https://doi.org/10.5194/esd-2019-69">10.5194/esd-2019-69</a>
+Merrifield, A. L. et al. (2019): A weighting scheme to incorporate large ensembles in multi-model ensemble projections. _Earth Syst. Dynam. Diss._ DOI: <a href="https://doi.org/10.5194/esd-2019-69">10.5194/esd-2019-69</a>
 
 Brunner, L. et al. (2019): Quantifying uncertainty in European climate projections using combined performance-independence weighting. _Eniron. Res. Lett._ DOI: <a href="https://doi.org/10.1088/1748-9326/ab492f">10.1088/1748-9326/ab492f</a>
 
