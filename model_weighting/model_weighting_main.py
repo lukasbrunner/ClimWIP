@@ -517,7 +517,7 @@ def calc_deltas(performance_diagnostics, independence_diagnostics, cfg):
         for idx, diag in enumerate(performance_diagnostics):
             plot_rmse(diag, idx, cfg, 'performance', min_, max_)
 
-    if cfg.variants_independence:
+    if cfg.variants_independence and cfg.variants_combine is not None:
         logger.info('sigma_i estimated from ensemble variants: {:.4f}'.format(sigma_i[0]))
 
     return delta_q, delta_i, sigma_i
