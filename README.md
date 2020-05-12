@@ -1,7 +1,7 @@
 ClimWIP
 =======
 
-A collection of functions to perform Climate model Weighting by Independence and Performance (ClimWIP).
+A collection of functions implementing the Climate model Weighting by Independence and Performance (ClimWIP) package.
 
 Content
 -------
@@ -10,17 +10,22 @@ Content
 * [Requirements and Installation](#requirements-and-installation)
 * [Setup and Data Paths](#setup-and-data-paths)
 * [Usage and Testing](#usage-and-testing)
-* [Updates](#updates)
 * [Contributors](#contributors)
 * [Attribution](#attribution)
 * [License](#license)
+* [Updates](#updates)
+* [Example config file](#example-config-file)
 
 
 Key Publications
 ---------------------
+Brunner, L. et al. (in preparation): A weighting scheme to constrain global temperature change from CMIP6 accounting for model independence and performance _Earth Syst. Dynam._
+
+Merrifield, A. L. et al. (2019): A weighting scheme to incorporate large ensembles in multi-model ensemble projections. _Earth Syst. Dynam. Diss._ DOI: <a href="https://doi.org/10.5194/esd-2019-69">10.5194/esd-2019-69</a>
+
 Brunner, L. et al. (2019): Quantifying uncertainty in European climate projections using combined performance-independence weighting. _Eniron. Res. Lett._ DOI: <a href="https://doi.org/10.1088/1748-9326/ab492f">10.1088/1748-9326/ab492f</a>
 
-Lorenz, R. et al. (2018): Prospects and caveats of weighting climate models for summer maximum temperature projections over North America. _Journal of Geophysical Research: Atmospheres_, 123, 4509–4526. DOI: <a href="http://doi.wiley.com/10.1029/2017JD027992">10.1029/2017JD027992</a>
+Lorenz, R. et al. (2018): Prospects and caveats of weighting climate models for summer maximum temperature projections over North America. _J. Geophys. Res.: Atmospheres_, 123, 4509–4526. DOI: <a href="http://doi.wiley.com/10.1029/2017JD027992">10.1029/2017JD027992</a>
 
 Knutti, R. at al. (2017): A climate model projection weighting scheme accounting for performance and interdependence, _Geophys. Res. Lett._, 44, 1909–1918. DOI <a href="http://doi.wiley.com/10.1002/2016GL072012">10.1002/2016GL072012</a>
 
@@ -34,11 +39,8 @@ To clone it from GitHub use
 
 <code>git clone git@git.iac.ethz.ch:model_weighting/model_weighting.git</code>
 
-To install dependencies change into the newly created directory (by default with <code>cd ClimWIP</code> (and at the moment also <code>git checkout paper</code>)) and run
-<code>conda env create -f environment.yml</code>
-
-Alternatively, create a new environment and install the required packages manually. This is easiest achieved by running the following:
-<code>conda create -n ClimWIP python=3.8.1 xarray=0.14.1 regionmask python-cdo netCDF4</code>
+The easiest way to install all required packages is to run:
+<code>conda create -n ClimWIP python=3.8.1 xarray=0.15.1 regionmask python-cdo netCDF4</code>
 
 Activate the environment:
 <code>conda activate ClimWIP</code>
@@ -54,13 +56,13 @@ To permanently add it run
 Setup and Data Paths
 --------------------
 
-ClimWIP makes several assumptions about the folder structure and filename conventions when collection the models to weight. It is developed and tested on the ETH CMIP3/CMIP5/CMIP6 next generation archives which is similar to the ESGF structure, but slightly flatter. Basically the assumed structure is:
+ClimWIP makes several assumptions about the folder structure and filename conventions when collection the models to weight. It is developed and tested on the ETH CMIP3/CMIP5/CMIP6 next generation archives (e.g., <a href="https://doi.org/10.5281/zenodo.3734128.Contact.">Brunner et al. 2020</a>) which is similar to the ESGF structure, but slightly flatter. Basically the assumed structure is:
 <code>BASE_PATH/varn/varn_mon_model_scenario_ensemble_g025.nc</code> (CMIP3, 5) or
 <code>BASE_PATH/varn/mon/g025/varn_mon_model_scenario_ensemble_g025.nc</code> (CMIP6).
 
 The filename conventions are constrained to core/get_filenames.py. Depending on the structure on your system it might be necessary to re-write parts of the functions there.
 
-ClimWIP saves all calculated diagnostics to speed up repeated calls using the same diagnostics. The default path for this is <code>./data</code>, in which sub-folders for each variable will be created. The final results will also be save in <code>./data</code> as netCDF4 files. They will be named after the configuration name, existing files will be overwritten.
+ClimWIP saves calculated diagnostics to speed up repeated calls using the same diagnostics (this behaviour can be changed by the "overwrite" flag). The default path for this is <code>./data</code>, in which sub-folders for each variable will be created. The final results will also be save in <code>./data</code> as netCDF4 files. They will be named after the configuration name, existing files will be overwritten!
 
 
 Usage and Testing
@@ -87,54 +89,82 @@ To run all configuration within one file run
 
 this will also automatically set the logger to log to a file instead of Stdout.
 
-If the 'plot' field in the configuration is set to True ClimWIP will create simple plots with intermediate results by default in <code>./plots/process_plots</code>.
+If the 'plot' flag in the configuration is set to True ClimWIP will create simple plots with intermediate results by default in <code>./plots/process_plots</code>.
 
 The results will by default be saved as netCDF4 files in <code>./data</code> and will be named after their respective configuration (note that this means they can be overwritten if different configuration files have configuration with the exact same name!).
 
-If you are using the ETH next generation archives with the standard settings you can run
-<code>./run_all.py configs/config_default.ini</code>
-to test several simple cases.
+Contributors
+------------
+
+- Jan Sedlacek
+- Lukas Brunner (lukas.brunner@env.ethz.ch)
+- Ruth Lorenz (ruth.lorenz@env.ethz.ch)
+
+Attribution
+-----------
+
+If you use our code please cite us and put this (or a similar) sentence in the acknowledgments: "We thank Lukas Brunner, Ruth Lorenz, and Jan Sedlacek (ETH Zurich) for providing the ClimWIP model weighting package."
+
+License
+-------
+
+ClimWIP is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 
 Updates
 -------
 
-### Update January 2020
+### Update January 2020 | Version for Brunner et al. (submitted)
 
 This update introduces changes which are NOT backward compatible with old config files!
 
-- Change some variable names in the config file:
+- Change some flag names in the config file:
   - predictor_* -> performance_*
   - performance_masko -> performance_masks
   - target_masko -> target_mask
   - ensembles -> variants_use
-  - ensemble_independence -> variantes_inddependence
-- Add some variables to the config file:
+  - ensemble_independence -> variantes_independence
+- Add some flags to the config file:
   - performance_normalizers : None or float or string or list of float or string
   - performance_weights : None or float or list of float
   - independence_* : similar to performance_*
   - variants_select : string
-- Change some allowed variable values in the config file:
-  - predictor_masks : bool -> string or bool
+  - variants_combine : None or string
+- Change some allowed flag values in the config file:
+  - predictor_masks : bool -> string or False
   - predictor_* : list -> single value or list
-  - ensembles : bool -> integer > 0 or 'all'
+  - variants_use : bool -> integer > 0 or 'all'
+
+*Main updates*
 
 It is now possible to use different performance and independence diagnostics if the sigma values are set. Due to that change the normalization of diagnostics before combining them has changed: performance and independence diagnostics are now normalized separately (even if they are identical). This can lead to slightly different results!
 
 It is now possible to mask either land or sea or neither.
 
 It is now possible to assign weights to each diagnostic to define how much they contribute to the weights.
-2
+
 It is now possible to use user-defined values to normalize the predictors before combining them. This can be useful when working with bootstrapping, which exchanges model variants. In the past this could lead to random changes in the normalization, which could lead to surprising results.
 
-It is not possible to give a maximum number of variants to use per model instead of a bool indicating all or only one variant. In addition the new parameter variants_select specifies how to sort variants before selection (the first xx will be used).
+It is now possible to give a maximum number of variants to use per model instead of a bool indicating all or only one variant. In addition the new parameter variants_select specifies how to sort variants before selection (the first xx will be used) or if random variants are selected (can be used, e.g., for bootstrapping).
 
-Added the script 'search_potential_constraints.py' which takes a config file equivalent to the main script and calculates the correlation between diagnostics and the target as well as the correlation between each diagnostics pair (to exclude highly correlated diagnostics).
+It is now possible to combine ensemble variants of the same model within the method (see Brunner et al. submitted for details).
 
 
 Example config file
 -------------------
 
-For an example file also look into model_weighting/configs/config_default.ini!
+For an example file also look into model_weighting/configs/config_default.ini! Flags which are marked as optional do not need to be set (not even in the DEFAULT section).
 
 model_path : string or list of strings
 
@@ -156,13 +186,13 @@ model_scenario : string or list of strings
 
 obs_path : None or string or list of strings
 
-    Example: /net/tropo/climphys1/rlorenz/Datasets/ERAint/v0/processed/monthly/,
+    Example: /net/h2o/climphys/lukbrunn/Data/InputData/ERA5/v1/
 
-    Description: Path(s) to the observation archive(s).
+    Description: Path(s) to the observation archive(s). If None no observations will be used and weights will be calculted in a pure "perfect model" world with each model beeing used as "pseudo observation" once.
 
 obs_id : None or string or list of strings
 
-    Example: ERA-Interim
+    Example: ERA5
 
     Description: Unique identifier for each observational data set. Needs to have same lenth as model_path.
 
@@ -175,47 +205,43 @@ obs_uncertainty : None or string
     - mean: The mean of all observational data sets is used as reference.
     - median: The median of all observational data sets is used as reference.
     - center: The center [0.5*(max + min)] of all observational data sets is used as reference.
-    - None: Only allowed if only one observational data set is used.
+    - None: Only allowed if only one or no observational data set is used.
 
 save_path : string
 
     Example: ../data/
 
-    Description: Path to save temp files and final output file. Has to exist and be writable.
+    Description: Path to save temp files and final output file. Needs to exist and be writable.
 
 plot_path : string
 
     Example: ../plots/
 
-    Description: Path to save plots.
+    Description: Path to save plots if plot is set to True. Needs to exist and be writable.
 
 overwrite : bool
 
-    Example: False
+    Allowed values: True, False
 
-    Description: Overwrite already existing diagnostics or calculate every time.
+    Description: If True overwrite already existing diagnostics otherwise re-use them. Re-using can lead to a considerably speedup depending on the mumber of models and diagnostics used.
 
 percentiles : list of two floats in (0, 1)
 
     Example: .1, .9
 
-    Description: Percentiles to use in the perfect model test. It will be tested how often the perfect model lies between the two percentiles.
+    Description: Percentiles to use in the perfect model test. The test checks how often the perfect model lies between the two percentiles.
 
-    # if None: calculate as percentiles[1] - percentiles[0]
-    # if force: same as None but dynamicaly relaxes the test if it fails
 inside_ratio : None or float or force
 
-    Example: .8
+    Example: force
 
-    Description: It will be tested for which sigma value the perfect model lies between the two percentiles at least this often.
-    - None: Value will be calculated on the fly as percentiles[1] - percentiles[0]
-    - force: Same as None but if no sigma value can be found to fulfil the perfect model test this will be relaxed.
+    Description: Select strength of the weighing such that the perfect models are inside of the two percentiles (see above) at least as often as given by inside_ratio. If None value will be calculated on the fly as percentiles[1] - percentiles[0]. If force: similar to None but if no sigma value can be found to fulfil the perfect model test this will be relaxed until it can be fulfilled.
 
 subset : None or list of strings
 
     Pattern: <model>_<ensemble>_<id>
 
-    Description: If not None use onle the models specified here. If not all models specified here can be found a Value Error will be raised in order to make sure all models specified are used.
+    Description: If not None use only the models specified here. If not all models specified here can be found a Value Error will be raised in order to make sure that all models specified are used.
 
 variants_use : integer > 0 or all
 
@@ -230,17 +256,21 @@ variants_select: string
     Description: Specify the sorting strategy applied to model variante before selecting the frist xx (given by variants_use) variants.
     - sorted: Sort using the Python buildin sorted() function. This was the original sorting strategy but leads to potentially unexpected sorting: [r10i*, r11i*, r1i*, ...]
     - natsorted: Sort using the natsort.natsorted function: [r1i*, r10i*, r11i*, ...]
-    - random: Do not sort but pick random members. This can be used for bootstrapping of model variants: [r24i*, r7i*, r13i*, ...]
+    - random: Do not sort but pick random members. This can, e.g., be used for bootstrapping of model variants: [r24i*, r7i*, r13i*, ...]
 
 variants_independence : bool
 
-    Example: True
+    Allowed values: True, False
 
     Description: Can only be True if variants_use is not 1. If True use an alternative approach to calculate the independence sigma based on ensemble member similarity (see appendix of Brunner et al. 2019)
 
-performance_metric: string, optional
+variants_combine : bool
 
-    Default: RMSE
+    Allowed values: True, False
+
+    Description: If False treat each ensemble member as individual model - this was the default behavior in the original version. If True average ensemble members of the same model before calculating the weights (see Merrifield et al. 2019 and Brunner et al. submitted for details).
+
+performance_metric: string, optional
 
     Allowed values: RMSE
 
@@ -265,7 +295,7 @@ sigma_i : None or float > 0 or -99
     Example: None
 
     Description: Independence sigma value handling
-    - None: Calculate the sigma value via perfect model test.
+    - None: Calculate the sigma value on the fly
     - float: Use given sigma value.
     - -99: Use no sigma value and set all independence weights to 1.
 
@@ -274,21 +304,27 @@ sigma_q : None or float or -99
     Example: None
 
     Description: Performance sigma value handling
-    - None: Calculate the sigma value via perfect model test.
+    - None: Calculate the sigma value on the fly via a perfect model test.
     - float: Use given sigma value.
     - -99: Use no sigma value and set all performance weights to 1.
 
-target_diagnostic : string
+target_diagnostic : None or string
 
     Example: tas
 
-    Description: Variable identifyer of the target diagnostic. Has to be in the model archive.
+    Description: Variable identifyer of the target diagnostic. Has to be in the model archive. Setting this to None is only allowed if sigma_q is given and therefore no perfect model test is needed.
 
-target_gag : string
+target_agg : string
 
     Allowed values: CLIM, STD, TREND, ANOM-GLOABL, ANOM-LOCAL, CORR
 
     Description: Time aggregation of the target variable.
+    - CLIM: Time mean over the given period
+    - ANOM-GLOBAL: Same as CLIM but with the global mean removed
+    - ANOM-LOCAL: Same as CLIM but with the mean of the region removed
+    - STD: Standart deviation of the de-trended time series
+    - TREND: Trend over the given period
+    - CORR: Time correlation between two variables
 
 target_season : string
 
@@ -300,13 +336,13 @@ target_mask : False or sea or land
 
     Allowed values: False, sea, land
 
-    Description: Mask applied to the target variable.
+    Description: Mask applied to the target variable. The mask is based on the grid cell center (using the Python regionmask package).
 
 target_region : string
 
     Example: GLOBAL
 
-    Description: Region to use. Can either be GLOBAL or a valid SREX region or a region which is definde in the shapefiles folder as 'target_region.txt'.
+    Description: Region to use. Can either be GLOBAL or a valid SREX region or a region which is defined in the shapefiles folder as 'target_region.txt'.
 
 target_startyear : integer
 
@@ -316,7 +352,7 @@ target_startyear : integer
 
 target_endyear : integer
 
-    Example:2099
+    Example: 2099
 
     Description: End of the time period to consider of the target variable.
 
@@ -344,27 +380,37 @@ performance_aggs : string or list of strings
 
 performance_seasons : string or list of strings
 
+    Example: JJA
+
     Description: Has to either have same length as performance_diagnostics or be a single value. If it is a single value this value will be used for each value in performance_diagnostics.
 
 performance_masks : False or string or list of False/strings
+
+    Allowed values: False, sea, land
 
     Description: Has to either have same length as performance_diagnostics or be a single value. If it is a single value this value will be used for each value in performance_diagnostics.
 
 performance_regions : string or list of strings
 
+    Example: GLOBAL
+
     Description: Has to either have same length as performance_diagnostics or be a single value. If it is a single value this value will be used for each value in performance_diagnostics.
 
 performance_startyears : integer or list of integers
+
+    Example: 1995
 
     Description: Has to either have same length as performance_diagnostics or be a single value. If it is a single value this value will be used for each value in performance_diagnostics.
 
 performance_endyears : integer or list of integers
 
+    Example: 2014
+
     Description: Has to either have same length as performance_diagnostics or be a single value. If it is a single value this value will be used for each value in performance_diagnostics.
 
-performance_normalizers : string of float or list of strings or floats
+performance_normalizers : string or float or list of strings or floats
 
-    Allowed values: median, mean, center, <list of floats>
+    Allowed values: median, mean, center, <float>, <list of floats>
 
     Description: Metric to normalize different diagnostics before combining them. Has to either have same length as performance_diagnostics or be a single value. If it is a single value this value will be used for each value in performance_diagnostics.
 
@@ -394,32 +440,3 @@ independence_endyears : integer or list of integer
 independence_normalizers : None or float or string or list of floats or strings
 
 independence_weights : None or float list of floats
-
-
-Contributors
-------------
-
-- Jan Sedlacek
-- Lukas Brunner (lukas.brunner@env.ethz.ch)
-- Ruth Lorenz (ruth.lorenz@env.ethz.ch)
-
-Attribution
------------
-
-If you use our code please put this (or a similar) sentence in the acknowledgments: "We thank Lukas Brunner, Ruth Lorenz, and Jan Sedlacek (ETH Zurich) for providing the ClimWIP model weighting package."
-
-License
--------
-
-ClimWIP is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
