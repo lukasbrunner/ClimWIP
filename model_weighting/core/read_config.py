@@ -23,6 +23,7 @@ types = {
     'variants_use': (int, str),
     'variants_select': str,
     'variants_independence': bool,
+    'variants_combine': bool,
     'idx_lats': (int, type(None)),
     'idx_lons': (int, type(None)),
     'inside_ratio': (float, str, type(None)),
@@ -100,6 +101,7 @@ values = {
     'variants_use': ['all', *list(range(1, 100))],
     'variants_select': ['sorted', 'natsorted', 'random'],
     'variants_independence': [True, False],
+    'variants_combine': [True, False],
     'obs_path': None,  # TODO: None or exists
     'obs_id': None,
     'obs_uncertainty': [None, 'range', 'mean', 'median', 'center'],
