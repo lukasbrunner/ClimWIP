@@ -37,7 +37,7 @@ ClimWIP is written in Python and requires at least version 3.6. It is currently 
 
 To clone it from GitHub use
 
-<code>git clone git@git.iac.ethz.ch:model_weighting/model_weighting.git</code>
+<code>git clone git@github.com:lukasbrunner/ClimWIP.git</code>
 
 The easiest way to install all required packages is to run:
 <code>conda create -n ClimWIP python=3.8.1 xarray=0.15.1 regionmask python-cdo netCDF4</code>
