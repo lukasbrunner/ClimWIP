@@ -13,6 +13,7 @@ Content
 * [Contributors](#contributors)
 * [Attribution](#attribution)
 * [License](#license)
+* [Bugfixes](#bugfixes)
 * [Updates](#updates)
 * [Example config file](#example-config-file)
 
