@@ -268,7 +268,7 @@ def calculate_basic_diagnostic(infile, varn,
                                mask_land_sea=False,
                                region='GLOBAL',
                                overwrite=False,
-                               regrid=False,  # TODO, DELETE
+                               regrid=False,  # DELETE
                                idx_lats=None,
                                idx_lons=None):
     """
@@ -299,8 +299,7 @@ def calculate_basic_diagnostic(infile, varn,
         Each string must be a valid SREX region
     overwrite : bool, optional
         If True overwrite existing outfiles otherwise read and return them.
-    regrid : bool, optional
-        If True the file will be regridded by cdo.remapbil before opening.
+    regrid : DEPRECATED
     idx_lats : list of int, optional
     idx_lons : list of int, optional
 
