@@ -1,13 +1,13 @@
-ClimWIP
-=======
-
-A collection of functions to perform Climate model Weighting by Independence and Performance (ClimWIP).
-
-<span style="color:red">Deprecation Warning</span>
+Deprecation Warning
 -------------------
 
 This version of ClimWIP is deprecated and only exists for transparency and tractability as it reflects the status of the code used for Brunner et al. 2019. **Please use the current version!**
 
+
+ClimWIP
+=======
+
+A collection of functions to perform Climate model Weighting by Independence and Performance (ClimWIP).
 
 Content
 -------
