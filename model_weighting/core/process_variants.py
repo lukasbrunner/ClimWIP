@@ -54,6 +54,7 @@ def _set_diagonal(data):
     return data
 
 
+# NOTE: this function is not used in the current implementation
 def spread_to_weight(ratios, metric='logistic', **kwargs):
     """
     Implements different metrics to calculate weights based on the spread ratios.
@@ -262,7 +263,7 @@ def process_variants(da, cfg):
     model_ensemble_nested = get_model_variants(da['model_ensemble'].data)
 
     if (np.all([len(me) == 1 for me in model_ensemble_nested]) or
-        cfg.variants_combine is None):
+        not cfg.variants_combine):
         if len(da['diagnostic']) > 1:
             delta_i = xr.apply_ufunc(
                 _mean, da, diagnostic_weights_user,
@@ -330,13 +331,14 @@ def process_variants(da, cfg):
         variant_std = xr.concat(variants_std, dim='perfect_model_ensemble').mean('perfect_model_ensemble')
         model_std = da_mean.std('model_ensemble').mean('perfect_model_ensemble')
 
+    # NOTE: this is not used in the current implementation
     # the spread ratio is an estimate of the quality of a predictor; the larger it is
     # the higher is the effect of internal variability in a predictor - we therefore
     # prefer predictors with a low spread ratio
     spread_ratios = variant_std / model_std
     diagnostic_weights_quality = xr.apply_ufunc(
         spread_to_weight, spread_ratios,
-        kwargs={'metric': cfg.variants_combine})
+        kwargs={'metric': 'equal'})  # TODO: if we want to change this we need an additional flag
 
     # combine them with user given weights
     diagnostic_weights = diagnostic_weights_quality * diagnostic_weights_user
@@ -395,7 +397,7 @@ def process_variants(da, cfg):
                 f'{cfg.performance_diagnostics[idx]}{cfg.performance_aggs[idx]}'])
 
         logmsg = ' '.join([
-            f'Spread ratio -> quality weight by "{cfg.variants_combine}"',
+            f'Spread ratio -> quality weight by "equal"',
             f'x user weight -> total weight for {diagn}:',
             f'{spread_ratios.data[idx]:.2f} -> {diagnostic_weights_quality.data[idx]:.2f} x',
             f'{diagnostic_weights_user.data[idx]:.2f} -> {diagnostic_weights.data[idx]:.2f}'])
