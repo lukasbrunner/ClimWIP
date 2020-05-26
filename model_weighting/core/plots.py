@@ -211,7 +211,7 @@ def plot_maps(ds, idx, cfg):
         ax.coastlines()
         ax.add_feature(cartopy.feature.BORDERS)
         xx, yy = np.meshgrid(ds['lon'].data[1:-1], ds['lat'].data[1:-1])
-        if cfg.performance_regions[idx] != 'GLOBAL' or not cfg.performancs_masks[idx]:
+        if not (cfg.performance_regions[idx] == 'GLOBAL' or cfg.performance_masks[idx]):
             ax.scatter(xx, yy, s=1, color='k')
 
         # longitude_formatter = LongitudeFormatter()
