@@ -13,12 +13,14 @@ Content
 * [Contributors](#contributors)
 * [Attribution](#attribution)
 * [License](#license)
+* [Bugfixes](#bugfixes)
 * [Updates](#updates)
 * [Example config file](#example-config-file)
 
 
 Key Publications
 ---------------------
+
 Brunner, L. et al. (2020): A weighting scheme to constrain global temperature change from CMIP6 accounting for model independence and performance _Earth Syst. Dynam. Diss._ DOI:  <a href="https://doi.org/10.5194/esd-2020-23">10.5194/esd-2020-23</a>
 
 Merrifield, A. L. et al. (2019): A weighting scheme to incorporate large ensembles in multi-model ensemble projections. _Earth Syst. Dynam. Diss._ DOI: <a href="https://doi.org/10.5194/esd-2019-69">10.5194/esd-2019-69</a>
@@ -96,9 +98,10 @@ The results will by default be saved as netCDF4 files in <code>./data</code> and
 Contributors
 ------------
 
-- Jan Sedlacek
 - Lukas Brunner (lukas.brunner@env.ethz.ch)
 - Ruth Lorenz (ruth.lorenz@env.ethz.ch)
+- Anna L. Merrifield (anna.merrifield@env.ethz.ch)
+- Jan Sedlacek
 
 Attribution
 -----------
