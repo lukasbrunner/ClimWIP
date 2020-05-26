@@ -290,11 +290,17 @@ def calculate_basic_diagnostic(infile, varn,
     if isinstance(mask_land_sea, bool) and not mask_land_sea:
         pass
     elif mask_land_sea == 'sea':
-        sea_mask = regionmask.defined_regions.natural_earth.land_110.mask(da) == 0
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            sea_mask = regionmask.defined_regions.natural_earth.land_110.mask(da) == 0
         da = da.where(sea_mask)
     elif mask_land_sea == 'land':
-        land_mask = np.isnan(regionmask.defined_regions.natural_earth.land_110.mask(da))
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            land_mask = np.isnan(regionmask.defined_regions.natural_earth.land_110.mask(da))
         da = da.where(land_mask)
+    else:
+        raise NotImplementedError
 
     if time_aggregation == 'ANOM-GLOBAL':
         da_mean = da.groupby('time.year').mean('time', skipna=False)
