@@ -56,7 +56,7 @@ To permanently add it run
 Setup and Data Paths
 --------------------
 
-ClimWIP makes several assumptions about the folder structure and filename conventions when collection the models to weight. It is developed and tested on the ETH CMIP3/CMIP5/CMIP6 next generation archives (e.g., <a href="https://doi.org/10.5281/zenodo.3734128.Contact.">Brunner et al. 2020</a>) which is similar to the ESGF structure, but slightly flatter. Basically the assumed structure is:
+ClimWIP makes several assumptions about the folder structure and filename conventions when collection the models to weight. It is developed and tested on the ETH CMIP3/CMIP5/CMIP6 next generation archives (e.g., <a href="https://doi.org/10.5281/zenodo.3734128">Brunner et al. 2020</a>) which is similar to the ESGF structure, but slightly flatter. Basically the assumed structure is:
 <code>BASE_PATH/varn/varn_mon_model_scenario_ensemble_g025.nc</code> (CMIP3, 5) or
 <code>BASE_PATH/varn/mon/g025/varn_mon_model_scenario_ensemble_g025.nc</code> (CMIP6).
 
