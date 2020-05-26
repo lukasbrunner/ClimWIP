@@ -23,6 +23,8 @@ Authors
 -------
 - Ruth Lorenz || ruth.lorenz@env.ethz.ch
 - Lukas Brunner || lukas.brunner@env.ethz.ch
+- Anna Merrifield || anna.merrifield@ethz.ch
+- Mario S. Koenz || mskoenz@gmx.net
 
 Abstract
 --------
@@ -195,6 +197,68 @@ def standardize_units(da, varn):
     return da
 
 
+def average_season(da, season, full_seasons_only=True):
+    """
+    An helper function for grouping and averaging season correctly.
+
+    The xarray groupby('time.year').mean('time') routine does not account
+    for seasons extending over multiple years (i.e., the winter season
+    extending from December in year X to Jannuary and February in year X+1).
+    This function fixes this but grouping consecutive months across different
+    years.
+
+    Parameters
+    ----------
+    da : xarray.DataArray
+        Has to contain at least the time dimension.
+    season : string {'JJA', 'SON', 'DJF', 'MAM', 'ANN'} or None
+    full_seasons_only : bool, optional
+        If True (default) use only full seasons, otherwise use all seasons.
+        Note that using all seasons might lead to seasons consisting of only
+        one month!
+
+    Returns
+    -------
+    da_mean : same as input with time dimension averaged by season and renamed to year
+        Note that for the winter season the new year dimension labels winters by the
+        original year of January and February (i.e., the winter season 2000/2001 is
+        labeled 2001!)
+    """
+    assert season in ['JJA', 'SON', 'DJF', 'MAM', 'ANN', None]
+    if season != 'DJF':
+        return da.groupby('time.year').mean('time', skipna=False)
+
+    def get_season_label(time):
+        """Label each season by the year of Jannyary & February"""
+        if time.month == 12:
+            return time.year+1
+        return time.year
+
+    if full_seasons_only:
+        year_first = da.coords['time'].data[0].year
+        year_last = da.coords['time'].data[-1].year
+        logmsg = 'Dropping not-complete winter seasons: {}/{} and {}/{}'.format(
+            year_first-1, year_first, year_last, year_last+1)
+        logger.warning(logmsg)
+        da = da.sel(time=slice('{}-12'.format(year_first), '{}-02'.format(year_last)))
+
+    labels = [get_season_label(time) for time in da.coords['time'].data]
+    groups = xr.DataArray(labels, dims=['time'], name='year')
+    da_grouped = da.groupby(groups)
+
+    # making sure everything is a expected
+    if full_seasons_only:
+        assert np.all([len(vv) == 3 for vv in da_grouped.groups.values()])
+    else:
+        months_per_group = [len(vv) for vv in da_grouped.groups.values()]
+        assert months_per_group[0] == 2
+        assert months_per_group[-1] == 1
+        assert np.all([mm == 3 for mm in months_per_group[1:-1]])
+
+    return da_grouped.mean('time')
+
+
+
 def calculate_basic_diagnostic(infile, varn,
                                outfile=None,
                                id_=None,
@@ -303,7 +367,7 @@ def calculate_basic_diagnostic(infile, varn,
         raise NotImplementedError
 
     if time_aggregation == 'ANOM-GLOBAL':
-        da_mean = da.groupby('time.year').mean('time', skipna=False)
+        da_mean = average_season(da, season)
         da_mean = da_mean.mean('year', skipna=False)
         da_mean = area_weighted_mean(da_mean)
 
@@ -360,10 +424,10 @@ def calculate_basic_diagnostic(infile, varn,
 
         if time_aggregation == 'CLIM':
             # mean of seasonal (annual) means
-            da = da.groupby('time.year').mean('time', skipna=False)
+            da = average_season(da, season)
             da = da.mean('year', skipna=False)
         elif time_aggregation == 'ANOM-LOCAL':
-            da = da.groupby('time.year').mean('time', skipna=False)
+            da = average_season(da, season)
             da = da.mean('year', skipna=False)
 
             size = (~np.isnan(da)).sum()  # number of not NAN grid cells
@@ -380,13 +444,13 @@ def calculate_basic_diagnostic(infile, varn,
                 logger.warning(logmsg)
             da -= area_weighted_mean(da)
         elif time_aggregation == 'ANOM-GLOBAL':
-            da = da.groupby('time.year').mean('time', skipna=False)
+            da = average_season(da, season)
             da = da.mean('year', skipna=False)
             da -= da_mean
 
         elif time_aggregation == 'STD':
             # standard deviation of de-trended seasonal (annual) means
-            da = da.groupby('time.year').mean('time', skipna=False)
+            da = average_season(da, season)
             da = xr.apply_ufunc(detrend, da,
                                 input_core_dims=[['year']],
                                 output_core_dims=[['year']],
@@ -395,7 +459,7 @@ def calculate_basic_diagnostic(infile, varn,
             da = da.std('year', skipna=False)
         elif time_aggregation in ['TREND', 'TREND-MEAN']:
             # trend of seasonal (annual) means
-            da = da.groupby('time.year').mean('time', skipna=False)
+            da = average_season(da, season)
             da = xr.apply_ufunc(trend, da,
                                 input_core_dims=[['year']],
                                 output_core_dims=[[]],
