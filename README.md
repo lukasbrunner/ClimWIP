@@ -97,9 +97,10 @@ The results will by default be saved as netCDF4 files in <code>./data</code> and
 Contributors
 ------------
 
-- Jan Sedlacek
 - Lukas Brunner (lukas.brunner@env.ethz.ch)
 - Ruth Lorenz (ruth.lorenz@env.ethz.ch)
+- Anna L. Merrifield (anna.merrifield@env.ethz.ch)
+- Jan Sedlacek
 
 Attribution
 -----------
