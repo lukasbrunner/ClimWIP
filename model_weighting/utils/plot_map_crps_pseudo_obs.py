@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Time-stamp: <2020-01-31 08:10:33 lukbrunn>
+Time-stamp: <2020-02-17 11:58:01 lukbrunn>
 
 (c) 2019 under a MIT License (https://mit-license.org)
 
@@ -382,10 +382,10 @@ def plot_maps(da, da_obs, weights, cfg, fn):
     skill['RMSE'] = rmse_change
     skill['perfect_model_ensemble'] = xr.DataArray(cfg.obs_id, dims='perfect_model_ensemble')
 
-    return skill
+    return skill, wdiff_mean - diff.mean('model_ensemble')
 
 
-def plot_maps_mean(da, global_, fn=None, title=None, cmap='PuOr'):
+def plot_maps_mean(da, global_, fn=None, title=None, cmap='PuOr', vmax=20):
     proj = ccrs.PlateCarree(central_longitude=0)
     fig, ax = plt.subplots(subplot_kw={'projection': proj})
     # fig.subplots_adjust(left=.02, right=.98, bottom=.02, top=.93, hspace=.17, wspace=.1)
@@ -398,7 +398,7 @@ def plot_maps_mean(da, global_, fn=None, title=None, cmap='PuOr'):
         cmap=cmap,
         robust=True,
         levels=11,
-        vmax=20.,
+        vmax=vmax,
         center=0.,
         extend='both'
     )
@@ -432,12 +432,17 @@ def plot_maps_mean(da, global_, fn=None, title=None, cmap='PuOr'):
 def main():
     args = read_input()
     skill_list = []
+    diff_list = []
     # ds_list = []
     for filename in args.filenames:
         ds = xr.open_dataset(filename)
 
         varn = ds.attrs['target']
         region = ds.attrs['region']
+        if 'weights_mean' in ds:
+            ds = ds.drop_dims(('model_ensemble', 'perfect_model_ensemble'))
+            ds = ds.rename({'model': 'model_ensemble', 'perfect_model': 'perfect_model_ensemble',
+                            f'{varn}_mean': varn, 'weights_mean': 'weights'})
 
         cfg = read_config(ds.attrs['config'], ds.attrs['config_path'])
         log_parser(cfg)
@@ -449,17 +454,28 @@ def main():
 
         fn = f'Mapplots_skill_{ds.attrs["config"]}.png'
 
-        skill = plot_maps(ds[varn], ds_obs, ds['weights'], cfg, fn)
+        skill, diff = plot_maps(ds[varn], ds_obs, ds['weights'], cfg, fn)
         # ds['model_ensemble'] = xr.DataArray(cfg.obs_id, dims='model_ensemble')
 
         skill_list.append(skill)
+        diff_list.append(diff)
         # ds_list.appendd(ds)
 
     skill = xr.concat(skill_list, dim='perfect_model_ensemble')
+    diff = xr.concat(diff_list, dim='perfect_model_ensemble')
     # ds = xr.concat(ds_list, dim='model_ensemble')
 
     nr = len(skill['perfect_model_ensemble'].data)
     global_ = region == 'GLOBAL'
+
+    if args.savename is None:
+        fn = None
+    else:
+        fn = f'Mapplots_diff_mean_{args.savename}'
+        plot_maps_mean(diff.mean('perfect_model_ensemble'),
+                       global_,
+                       fn,
+                       f'Mean (N={nr}) difference', cmap='RdBu_r', vmax=None)
 
     if args.savename is None:
         fn = None
