@@ -19,7 +19,7 @@ Content
 
 Key Publications
 ---------------------
-Brunner, L. et al. (in preparation): A weighting scheme to constrain global temperature change from CMIP6 accounting for model independence and performance _Earth Syst. Dynam._
+Brunner, L. et al. (2020): A weighting scheme to constrain global temperature change from CMIP6 accounting for model independence and performance _Earth Syst. Dynam. Diss._ DOI:  <a href="https://doi.org/10.5194/esd-2020-23">10.5194/esd-2020-23</a>
 
 Merrifield, A. L. et al. (2019): A weighting scheme to incorporate large ensembles in multi-model ensemble projections. _Earth Syst. Dynam. Diss._ DOI: <a href="https://doi.org/10.5194/esd-2019-69">10.5194/esd-2019-69</a>
 
@@ -56,7 +56,7 @@ To permanently add it run
 Setup and Data Paths
 --------------------
 
-ClimWIP makes several assumptions about the folder structure and filename conventions when collection the models to weight. It is developed and tested on the ETH CMIP3/CMIP5/CMIP6 next generation archives (e.g., <a href="https://doi.org/10.5281/zenodo.3734128">Brunner et al. 2020</a>) which is similar to the ESGF structure, but slightly flatter. Basically the assumed structure is:
+ClimWIP makes several assumptions about the folder structure and filename conventions when collection the models to weight. It is developed and tested on the ETH CMIP3/CMIP5/CMIP6 next generation archives (e.g., <a href="https://doi.org/10.5281/zenodo.3734128">Brunner et al. 2020b</a>) which is similar to the ESGF structure, but slightly flatter. Basically the assumed structure is:
 <code>BASE_PATH/varn/varn_mon_model_scenario_ensemble_g025.nc</code> (CMIP3, 5) or
 <code>BASE_PATH/varn/mon/g025/varn_mon_model_scenario_ensemble_g025.nc</code> (CMIP6).
 
@@ -121,11 +121,16 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+Bugfixes
+--------
+
+Winter season variability and trend diagnostics used a annual mean function for time aggregation. This was wrong as for winter one needs to average December from year X together with January and February from year X+1 in order to get the correct seasonal mean. This has been corrected now in core/diagnostics.py
+
 
 Updates
 -------
 
-### Update January 2020 | Version for Brunner et al. (submitted)
+### Update May 2020 | Version for Brunner et al. (2020)
 
 This update introduces changes which are NOT backward compatible with old config files!
 
@@ -140,7 +145,7 @@ This update introduces changes which are NOT backward compatible with old config
   - performance_weights : None or float or list of float
   - independence_* : similar to performance_*
   - variants_select : string
-  - variants_combine : None or string
+  - variants_combine : bool
 - Change some allowed flag values in the config file:
   - predictor_masks : bool -> string or False
   - predictor_* : list -> single value or list
@@ -158,7 +163,7 @@ It is now possible to use user-defined values to normalize the predictors before
 
 It is now possible to give a maximum number of variants to use per model instead of a bool indicating all or only one variant. In addition the new parameter variants_select specifies how to sort variants before selection (the first xx will be used) or if random variants are selected (can be used, e.g., for bootstrapping).
 
-It is now possible to combine ensemble variants of the same model within the method (see Brunner et al. submitted for details).
+It is now possible to combine ensemble variants of the same model within the method (see Brunner et al. 2020 for details).
 
 
 Example config file
@@ -268,7 +273,7 @@ variants_combine : bool
 
     Allowed values: True, False
 
-    Description: If False treat each ensemble member as individual model - this was the default behavior in the original version. If True average ensemble members of the same model before calculating the weights (see Merrifield et al. 2019 and Brunner et al. submitted for details).
+    Description: If False treat each ensemble member as individual model - this was the default behavior in the original version. If True average ensemble members of the same model before calculating the weights (see Merrifield et al. 2019 and Brunner et al. 2020 for details).
 
 performance_metric: string, optional
 
