@@ -239,7 +239,9 @@ def average_season(da, season, full_seasons_only=True):
         year_last = da.coords['time'].data[-1].year
         logmsg = 'Dropping not-complete winter seasons: {}/{} and {}/{}'.format(
             year_first-1, year_first, year_last, year_last+1)
-        logger.warning(logmsg)
+        with warnings.catch_warnings():
+            warnings.simplefilter('once')
+            logger.warning(logmsg)
         da = da.sel(time=slice('{}-12'.format(year_first), '{}-02'.format(year_last)))
 
     labels = [get_season_label(time) for time in da.coords['time'].data]
@@ -363,6 +365,7 @@ def calculate_basic_diagnostic(infile, varn,
             land_mask = np.isnan(regionmask.defined_regions.natural_earth.land_110.mask(da))
         da = da.where(land_mask)
     else:
+        logger.error(f'mask {mask_land_sea} not implementend')
         raise NotImplementedError
 
     if time_aggregation == 'ANOM-GLOBAL':
