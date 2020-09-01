@@ -170,6 +170,11 @@ def main():
             cfg = read_config(ds.attrs['config'], ds.attrs['config_path'])
             # log_parser(cfg)
             ds_obs = read_obs(ds, cfg)
+
+            # if future is not available then skip
+            if np.all(np.isnan(ds_obs)):
+                continue
+
             skill = get_skill(ds[varn], ds_obs, ds['weights'], args.mean_of_crps)
             skill_list.append(skill)
 
