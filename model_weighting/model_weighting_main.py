@@ -451,9 +451,7 @@ def _normalize(data, normalize_by):
         else:
             raise ValueError
 
-    # # NOTE: optionally write out the normalizer for later use
-    # with open('../data/normalizer_tasANOM-GLOBAL.tex', 'a') as ff:
-    #     ff.write(f'{normalizer}\n')
+    # print(f'normalizer: {normalizer:.3f}')
 
     return data / normalizer
 
