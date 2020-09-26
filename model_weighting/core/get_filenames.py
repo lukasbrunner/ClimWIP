@@ -244,7 +244,7 @@ def get_filenames(cfg):
 
     logger.info(f'{len(selected_models)} models found')
     logger.info(f'{len(selected_model_ensembles)} runs selected')
-    logger.info(', '.join(selected_models))
-    logger.info(', '.join(selected_model_ensembles))
+    logger.info('Unique models: ' + ', '.join(selected_models))
+    logger.info('All runs: ' + ', '.join(selected_model_ensembles))
 
     return filenames

@@ -832,20 +832,20 @@ def main(args):
     """Call functions"""
     log = utils.LogTime()
 
-    log.start('main().read_config()')
+    log.start('read_config()')
     cfg = read_config(args.config, args.filename)
 
-    log.start('main().set_up_filenames(**kwargs)')
+    log.start('set_up_filenames()')
     filenames = get_filenames(cfg)
 
-    log.start('main().calc_predictors(**kwargs)')
+    log.start('calc_predictors()')
     if cfg.performance_diagnostics is None or cfg.obs_id is None:
         performance_diagnostics = None
     else:
         performance_diagnostics = calc_performance(filenames, cfg)
     independence_diagnostics = calc_independence(filenames, cfg)
 
-    log.start('main().calc_deltas(**kwargs)')
+    log.start('calc_deltas()')
     delta_q, delta_i, sigma_i_variants = calc_deltas(performance_diagnostics, independence_diagnostics, cfg)
 
     if cfg.target_diagnostic is None:
@@ -855,15 +855,15 @@ def main(args):
         targets = None
         clim = None
     else:
-        log.start('main().calc_target(**kwargs)')
+        log.start('calc_target()')
         targets, clim = calc_target(filenames[cfg.target_diagnostic], cfg)
-        log.start('main().calc_sigmas(**kwargs)')
+        log.start('calc_sigmas()')
         sigma_q, sigma_i = calc_sigmas(targets, delta_i, sigma_i_variants, cfg)
 
-    log.start('main().calc_weights(**kwargs)')
+    log.start('calc_weights()')
     weights = calc_weights(delta_q, delta_i, sigma_q, sigma_i, cfg)
 
-    log.start('main().save_data(**kwargs)')
+    log.start('save_data()')
     save_data(weights, targets, clim, filenames, cfg)
     log.stop
 
