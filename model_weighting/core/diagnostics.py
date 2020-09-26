@@ -91,37 +91,21 @@ def standardize_units(da, varn):
         if unit == 'kg m-2 s-1':
             da.data *= 24*60*60
             da.attrs['units'] = newunit
-        elif unit in ['m', 'mm']:
-            errmsg = '\n'.join([
-                'The use of m & mm is highly problematic in monthly files!',
-                'There correct interpretation (in my opinion) is as',
-                'precipitation sums over the respective month. But very often',
-                'they actually represent the mean of daily m or mm and should',
-                'therefore have the unit m/day & mm/day. This is even wrong',
-                'in the ERA5 monthly mean files downloaded from copernicus.',
-                # 'To avoid having this mistake fail silently and apply a',
-                # 'wrong correction here the usage of m & mm as unit is',
-                # 'disallowed for now!
-                'Please check the input files and change',
-                'the unit accordingly (e.g., using',
-                '<cdo chunit,m,m/day infile outfile>'])
-            # # http://cfconventions.org/Data/cf-conventions/cf-conventions-1.7/cf-conventions.html#calendar
-            # if da['time'].encoding['calendar'] in ['gregorian', 'standard', 'proleptic_gregorian']:
-            #     days_in_month = xr.CFTimeIndex.to_datetimeindex(da.time).days_in_month
-            #     days_in_month = xr.DataArray(days_in_month, coords={'time': da.time}, dims='time')
-            # elif da['time'].encoding['calendar'] in ['noleap', '365_day']:
-            #     days_in_month = 365
-            # elif da['time'].encoding['calendar'] in ['all_leap', '366_day']:
-            #     days_in_month = 366
-            # elif da['time'].encoding['calendar'] in ['360_day']:
-            #     days_in_month = 360
-            # else:
-            #     raise ValueError('Could not calculate days in month but need it for unit conversion!')
-            # da /= days_in_month
-            # if unit == 'm':
-            #     da.data *= 1000
-            # raise ValueError(errmsg)
-            logger.warning(errmsg)
+        elif unit == 'mm':
+            logmsg = '\n'.join([
+                'WARNING: Assuming that the data are given are monthly averages',
+                'of daily data! This means that the unit actually represents',
+                'values per day and not sums as might, intuitively, be expected!',
+                'Will change unit from "mm" to "mm/day"!'])
+            da.attrs['units'] = newunit
+        elif unit == 'm':
+            logmsg = '\n'.join([
+                'WARNING: Assuming that the data are given are monthly averages',
+                'of daily data! This means that the unit actually represents',
+                'values per day and not sums as might, intuitively, be expected!',
+                'Will change unit from "m" to "m/day" and then transfer to "mm/day"!'])
+            da.data *= 1000
+            da.attrs['units'] = newunit
         elif unit == 'm/day':  # ERA5
             da.data *= 1000
             da.attrs['units'] = newunit
