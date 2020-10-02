@@ -262,19 +262,6 @@ def process_variants(da, cfg):
 
     model_ensemble_nested = get_model_variants(da['model_ensemble'].data)
 
-    if (np.all([len(me) == 1 for me in model_ensemble_nested]) or
-        not cfg.variants_combine):
-        if len(da['diagnostic']) > 1:
-            delta_i = xr.apply_ufunc(
-                _mean, da, diagnostic_weights_user,
-                input_core_dims=[['diagnostic'], ['diagnostic']],
-                vectorize=True)
-        else:
-            delta_i = da.squeeze()
-        delta_i.name = 'delta_i'
-
-        return delta_i, None, da
-
     variants_std = []
     da_list = []
     for model_ensemble in model_ensemble_nested:
@@ -405,6 +392,18 @@ def process_variants(da, cfg):
             logger.info(logmsg)
         else:
             logger.warning(f'{logmsg} Consider not using this diagnostic?')
+
+    if (np.all([len(me) == 1 for me in model_ensemble_nested]) or
+        not cfg.variants_combine):
+        if len(da['diagnostic']) > 1:
+            delta_i = xr.apply_ufunc(
+                _mean, da, diagnostic_weights_user,
+                input_core_dims=[['diagnostic'], ['diagnostic']],
+                vectorize=True)
+        else:
+            delta_i = da.squeeze()
+        delta_i.name = 'delta_i'
+        return delta_i, sigma_i, da
 
     return diagnostic, sigma_i, da_mean
 

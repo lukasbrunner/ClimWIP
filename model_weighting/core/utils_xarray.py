@@ -430,6 +430,14 @@ def quantile(data, quantiles, weights=None, interpolation='linear',
     np.array of shape (M,)"""
     data = np.array(data)
     quantiles = np.array(quantiles)
+
+    if np.any(np.isnan(data)):
+        logmsg = 'data contains invalid elements (infinite, nan); removing them!'
+        logger.warning(logmsg)
+        if weights is not None:
+            weights = weights[np.isfinite(data)]
+        data = data[np.isfinite(data)]
+
     if np.any(np.isnan(data)):
         errmsg = ' '.join([
             'This function is not tested with missing data! Comment this test',
