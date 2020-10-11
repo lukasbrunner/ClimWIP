@@ -1,7 +1,7 @@
 ClimWIP
 =======
 
-A collection of functions implementing the Climate model Weighting by Independence and Performance (ClimWIP) package.
+A collection of functions implementing the Climate model Weighting by Independence and Performance (ClimWIP) package. A simplified implementation of ClimWIP is now also available within the [ESMValTool](https://docs.esmvaltool.org/en/latest/recipes/recipe_climwip.html). 
 
 Content
 -------
