@@ -1,4 +1,4 @@
-[![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![GitHub license](https://img.shields.io/github/license/lukasbrunner/ClimWIP)](https://github.com/lukasbrunner/ClimWIP/blob/Brunner_etal_2020_ESD/LICENSE)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4073039.svg)](https://zenodo.org/badge/DOI/10.5281/zenodo.4073039.svg)
 
 ClimWIP
